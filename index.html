@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Task Board</title>
+  <meta name="description" content="A simple daily to-do board: To Do, In Progress, Done — with due dates, priorities, labels, carry-over, and cross-device sync." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="title-block">
+      <h1>Daily Task Board</h1>
+      <p id="long-date" class="long-date"></p>
+    </div>
+
+    <div class="header-right">
+      <div id="auth-bar" class="auth-bar" hidden></div>
+      <div class="date-nav">
+        <button id="prev-day" class="icon-btn" title="Previous day" aria-label="Previous day">◀</button>
+        <input id="date-picker" type="date" class="date-picker" aria-label="Select date" />
+        <button id="next-day" class="icon-btn" title="Next day" aria-label="Next day">▶</button>
+        <button id="today-btn" class="ghost-btn">Today</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button id="carry-over" class="ghost-btn carry-btn" hidden></button>
+  </div>
+
+  <main id="board" class="board">
+    <!-- Columns rendered by app.js -->
+  </main>
+
+  <footer class="app-footer">
+    <span id="storage-note">Saved automatically in this browser.</span>
+  </footer>
+
+  <!-- Card template -->
+  <template id="card-template">
+    <article class="card">
+      <div class="card-top">
+        <span class="priority-dot" hidden></span>
+        <input class="card-title" type="text" placeholder="Task name" />
+        <button class="delete-btn" title="Delete task" aria-label="Delete task">×</button>
+      </div>
+      <textarea class="card-notes" placeholder="Add a description…" rows="1"></textarea>
+
+      <div class="card-meta">
+        <span class="due-badge" hidden></span>
+      </div>
+
+      <div class="card-controls">
+        <select class="priority-select" title="Priority" aria-label="Priority">
+          <option value="">Priority</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <input class="due-input" type="date" title="Due date" aria-label="Due date" />
+        <div class="label-swatches" role="group" aria-label="Color label"></div>
+        <div class="move-group" role="group" aria-label="Move task">
+          <button class="move-btn move-left" title="Move left" aria-label="Move left">←</button>
+          <button class="move-btn move-right" title="Move right" aria-label="Move right">→</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

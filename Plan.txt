@@ -1,0 +1,12 @@
+Version 1:
+One page website for tracking your todo list for the day and remembering you todo lists for previous days
+
+Has todays date
+three columns:
+- todo, in progress, done
+- simple card in todo list by default that lets you give it a name add notes to describe the task, you can also drag it to the other columns
+- you can easily add more tasks
+
+somehow when you have more than one day, you can select and look at those.
+
+suggest any other ideas you have. but lets start simple as a tiool i can use right now.
