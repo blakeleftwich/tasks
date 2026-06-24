@@ -35,20 +35,22 @@ npx serve .
    [`config.js`](config.js). Both are safe to commit — Row-Level Security restricts every row to its owner.
 5. Redeploy. Sign in from the header; existing local tasks migrate up on first sign-in.
 
-## Team mode — one shared list (optional)
+## Shared boards (optional)
 
-By default each signed-in user has their own private board. To instead share a single
-list across a small team:
+Each signed-in user gets a private **My Tasks** board, and can create extra boards and
+share them with a team:
 
-1. Run [`supabase-team.sql`](supabase-team.sql) in the Supabase SQL Editor.
-2. In that script, add the email each teammate signs in with to `team_members`
-   (including your own — if your email is missing you'll lose access to the board).
-3. Teammates sign in with a magic link from the same site. Everyone now sees and edits
-   the same list, and edits sync live.
+1. Run [`supabase-boards.sql`](supabase-boards.sql) in the Supabase SQL Editor (once).
+   It adds the board tables, the membership rules, and moves your existing tasks into a
+   personal board.
+2. In the app: use the **board picker** to switch boards, **+ New board** to create one,
+   and **🔗 Share** to copy a join link.
+3. Send the link to a teammate. When they open it while signed in (magic link), they
+   auto-join that board. Everyone on a board sees and edits it, with changes syncing live.
 
-It's a deliberately simple model: one shared list, membership managed in the database,
-and everyone can edit everything. Reverting to private mode is a one-line policy swap
-(noted at the bottom of the script).
+The model stays simple: a board is private until you share its link, membership is what
+grants access, and anyone on a board can edit it. Anyone with a board's link can join,
+so share links only with people you trust.
 
 ## Deploy
 

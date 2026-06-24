@@ -31,6 +31,8 @@ const expandedIds = new Set(); // cards expanded via the menu button (view state
 
 let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
+let boards = []; // boards the signed-in user belongs to
+let currentBoardId = null; // active board (null = single-board / legacy mode)
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -609,6 +611,7 @@ function loadScript(src) {
 
 function rowFromTask(t) {
   const row = { user_id: user.id };
+  if (currentBoardId) row.board_id = currentBoardId;
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -641,24 +644,132 @@ async function initSync() {
 }
 
 async function setUser(nextUser) {
-  const had = user;
+  const firstSignIn = !user && !!nextUser;
   user = nextUser;
   if (user) {
-    await pullRemote(!had); // migrate local tasks up on fresh sign-in
+    await setupBoards(); // load boards, honor a share link, pick the active board
+    await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
     subscribeRealtime();
+  } else {
+    boards = [];
+    currentBoardId = null;
   }
   renderAuthBar();
+  renderBoardBar();
   render();
 }
 
+/* ---------- Boards ---------- */
+function isPersonalBoard(id) {
+  const b = boards.find((x) => x.id === id);
+  return !!(b && user && b.owner_id === user.id);
+}
+
+async function loadBoards() {
+  const { data, error } = await supa.from("boards").select("*").order("created_at");
+  if (error) {
+    // boards table not set up yet → fall back to single-board mode.
+    console.warn("Boards unavailable; running in single-board mode.", error.message);
+    boards = [];
+    return false;
+  }
+  boards = data || [];
+  return true;
+}
+
+async function ensurePersonalBoard() {
+  if (boards.some((b) => b.owner_id === user.id)) return;
+  const board = { id: makeId(), name: "My Tasks", owner_id: user.id };
+  const { error } = await supa.from("boards").insert(board);
+  if (error) {
+    console.error("Could not create personal board:", error.message);
+    return;
+  }
+  await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
+  boards.push(board);
+}
+
+async function maybeJoinFromLink() {
+  const param = new URLSearchParams(window.location.search).get("board");
+  if (!param) return null;
+  history.replaceState({}, "", window.location.pathname); // tidy the URL
+  const { error } = await supa.from("board_members").upsert({ board_id: param, user_id: user.id });
+  if (error) {
+    console.error("Could not join shared board:", error.message);
+    alert("That share link looks invalid or expired.");
+    return null;
+  }
+  return param;
+}
+
+async function setupBoards() {
+  const ok = await loadBoards();
+  if (!ok) {
+    currentBoardId = null; // legacy single-board mode (pre-migration)
+    return;
+  }
+  await ensurePersonalBoard();
+  const joinId = await maybeJoinFromLink();
+  if (joinId) {
+    await loadBoards(); // now includes the joined board
+    if (boards.some((b) => b.id === joinId)) {
+      currentBoardId = joinId;
+      localStorage.setItem("currentBoardId", joinId);
+      return;
+    }
+  }
+  const saved = localStorage.getItem("currentBoardId");
+  currentBoardId =
+    (saved && boards.some((b) => b.id === saved) && saved) ||
+    (boards.find((b) => b.owner_id === user.id) || boards[0] || {}).id ||
+    null;
+}
+
+async function switchBoard(id) {
+  if (!id || id === currentBoardId) return;
+  currentBoardId = id;
+  localStorage.setItem("currentBoardId", id);
+  await pullRemote(false);
+  renderBoardBar();
+  render();
+}
+
+async function createBoard() {
+  const name = (window.prompt("Name this board:", "New board") || "").trim();
+  if (!name) return;
+  const board = { id: makeId(), name, owner_id: user.id };
+  const { error } = await supa.from("boards").insert(board);
+  if (error) {
+    console.error("Could not create board:", error.message);
+    return;
+  }
+  await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
+  boards.push(board);
+  await switchBoard(board.id);
+}
+
+async function shareBoard(btn) {
+  const url = window.location.origin + window.location.pathname + "?board=" + currentBoardId;
+  try {
+    await navigator.clipboard.writeText(url);
+    const original = btn.textContent;
+    btn.textContent = "✓ Link copied";
+    setTimeout(() => (btn.textContent = original), 1600);
+  } catch (e) {
+    window.prompt("Copy this share link:", url);
+  }
+}
+
 async function pullRemote(maybeMigrate) {
-  const { data, error } = await supa.from("tasks").select("*");
+  let query = supa.from("tasks").select("*");
+  if (currentBoardId) query = query.eq("board_id", currentBoardId);
+  const { data, error } = await query;
   if (error) {
     console.error("Could not load remote tasks:", error.message);
     return;
   }
-  if (maybeMigrate && data.length === 0 && tasks.length > 0) {
-    // First sign-in with existing local tasks → push them up.
+  if (maybeMigrate && data.length === 0 && tasks.length > 0 && isPersonalBoard(currentBoardId)) {
+    // First sign-in with existing local tasks → push them into the personal board.
     const { error: upErr } = await supa.from("tasks").upsert(tasks.map(rowFromTask));
     if (upErr) console.error("Migration upload failed:", upErr.message);
     saveLocal();
@@ -673,9 +784,8 @@ function subscribeRealtime() {
   if (realtimeChannel) return;
   realtimeChannel = supa
     .channel("tasks-sync")
-    // No user_id filter: RLS decides what we can see. In personal mode that's
-    // just our rows; in team mode it's the shared list, so teammates' edits
-    // arrive live too.
+    // No filter: RLS limits what we receive. We reload the active board on any
+    // visible change, so a shared board updates live for everyone on it.
     .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => {
       if (Date.now() < suppressRealtimeUntil) return; // ignore our own echoes
       if (document.activeElement && document.activeElement.closest(".card")) {
@@ -744,6 +854,46 @@ function renderAuthBar(message) {
     bar.appendChild(email);
     bar.appendChild(btn);
   }
+}
+
+function renderBoardBar() {
+  const bar = document.getElementById("board-bar");
+  if (!bar) return;
+  if (!user || !currentBoardId) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  bar.innerHTML = "";
+
+  const picker = document.createElement("select");
+  picker.className = "board-picker";
+  picker.setAttribute("aria-label", "Board");
+  boards
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b.id;
+      opt.textContent = b.name + (b.owner_id === user.id ? "" : " (shared)");
+      if (b.id === currentBoardId) opt.selected = true;
+      picker.appendChild(opt);
+    });
+  picker.addEventListener("change", () => switchBoard(picker.value));
+  bar.appendChild(picker);
+
+  const newBtn = document.createElement("button");
+  newBtn.className = "ghost-btn";
+  newBtn.textContent = "+ New board";
+  newBtn.addEventListener("click", createBoard);
+  bar.appendChild(newBtn);
+
+  const shareBtn = document.createElement("button");
+  shareBtn.className = "ghost-btn";
+  shareBtn.textContent = "🔗 Share";
+  shareBtn.title = "Copy a link that lets a teammate join this board";
+  shareBtn.addEventListener("click", () => shareBoard(shareBtn));
+  bar.appendChild(shareBtn);
 }
 
 /* =====================================================================
