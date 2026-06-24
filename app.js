@@ -394,7 +394,14 @@ function renderCard(task, colIndex) {
   left.addEventListener("click", () => moveByButton(task.id, -1));
   right.addEventListener("click", () => moveByButton(task.id, 1));
 
-  node.querySelector(".delete-btn").addEventListener("click", () => deleteTask(task.id));
+  node.querySelector(".delete-btn").addEventListener("click", async () => {
+    const name = task.title.trim();
+    const ok = await confirmModal({
+      message: name ? `“${name}” will be permanently deleted.` : "This task will be permanently deleted.",
+      confirmLabel: "Delete",
+    });
+    if (ok) deleteTask(task.id);
+  });
 
   // Up/down arrow toggles the card open/closed (description + options).
   const menuBtn = node.querySelector(".menu-btn");
@@ -666,7 +673,10 @@ function subscribeRealtime() {
   if (realtimeChannel) return;
   realtimeChannel = supa
     .channel("tasks-sync")
-    .on("postgres_changes", { event: "*", schema: "public", table: "tasks", filter: `user_id=eq.${user.id}` }, () => {
+    // No user_id filter: RLS decides what we can see. In personal mode that's
+    // just our rows; in team mode it's the shared list, so teammates' edits
+    // arrive live too.
+    .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => {
       if (Date.now() < suppressRealtimeUntil) return; // ignore our own echoes
       if (document.activeElement && document.activeElement.closest(".card")) {
         pendingReload = true; // don't yank the board while typing
@@ -735,6 +745,40 @@ function renderAuthBar(message) {
     bar.appendChild(btn);
   }
 }
+
+/* =====================================================================
+ * Confirmation modal
+ * ===================================================================== */
+const modalOverlay = document.getElementById("modal-overlay");
+const modalConfirmBtn = document.getElementById("modal-confirm");
+const modalCancelBtn = document.getElementById("modal-cancel");
+let modalResolve = null;
+
+function confirmModal({ title = "Delete task?", message = "", confirmLabel = "Delete" }) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-message").textContent = message;
+  modalConfirmBtn.textContent = confirmLabel;
+  modalOverlay.hidden = false;
+  modalCancelBtn.focus();
+  return new Promise((resolve) => (modalResolve = resolve));
+}
+
+function closeModal(result) {
+  if (modalOverlay.hidden) return;
+  modalOverlay.hidden = true;
+  const resolve = modalResolve;
+  modalResolve = null;
+  if (resolve) resolve(result);
+}
+
+modalConfirmBtn.addEventListener("click", () => closeModal(true));
+modalCancelBtn.addEventListener("click", () => closeModal(false));
+modalOverlay.addEventListener("click", (e) => {
+  if (e.target === modalOverlay) closeModal(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (!modalOverlay.hidden && e.key === "Escape") closeModal(false);
+});
 
 /* =====================================================================
  * Date navigation

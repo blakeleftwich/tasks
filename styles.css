@@ -460,6 +460,49 @@ body.dragging-active .empty-hint { display: none; }
   padding: 8px 16px 28px;
 }
 
+/* ---------- Modal ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 2000;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-drag);
+  padding: 20px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.modal-title { margin: 0 0 8px; font-size: 1.05rem; }
+.modal-message { margin: 0 0 18px; color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.danger-btn {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid #ef4444;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 8px;
+  padding: 7px 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.danger-btn:hover { background: #dc2626; border-color: #dc2626; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 760px) {
   .board { grid-template-columns: 1fr; }
