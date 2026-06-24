@@ -27,6 +27,7 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 /* ---------- State ---------- */
 let tasks = []; // flat array of task objects
 let selectedDate = todayKey();
+const expandedIds = new Set(); // cards expanded via the menu button (view state, not persisted)
 
 let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
@@ -309,6 +310,9 @@ function render() {
     column.querySelector(".add-btn").addEventListener("click", () => addTask(col.key));
     board.appendChild(column);
   });
+
+  // Size descriptions of already-expanded cards now that they're in the DOM.
+  board.querySelectorAll(".card.expanded .card-notes").forEach(autoGrow);
 }
 
 function renderCarryOver() {
@@ -326,6 +330,7 @@ function renderCarryOver() {
 function renderCard(task, colIndex) {
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.id = task.id;
+  if (expandedIds.has(task.id)) node.classList.add("expanded");
 
   // Label colour as the left border.
   const labelDef = LABELS.find((l) => l.key === task.label);
@@ -382,6 +387,21 @@ function renderCard(task, colIndex) {
   right.addEventListener("click", () => moveByButton(task.id, 1));
 
   node.querySelector(".delete-btn").addEventListener("click", () => deleteTask(task.id));
+
+  // Hamburger toggles the card open/closed (description + options).
+  const menuBtn = node.querySelector(".menu-btn");
+  menuBtn.setAttribute("aria-expanded", String(expandedIds.has(task.id)));
+  menuBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const expanded = node.classList.toggle("expanded");
+    if (expanded) {
+      expandedIds.add(task.id);
+      autoGrow(notes);
+    } else {
+      expandedIds.delete(task.id);
+    }
+    menuBtn.setAttribute("aria-expanded", String(expanded));
+  });
 
   // Press-and-move anywhere on the card (incl. text fields) starts a drag.
   node.addEventListener("pointerdown", (e) => onCardPointerDown(e, node, task.id));
