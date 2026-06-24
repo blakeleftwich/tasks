@@ -7,8 +7,8 @@ const STORAGE_KEY = "taskManager.v2";
 const LEGACY_KEY = "taskManager.v1";
 
 const COLUMNS = [
-  { key: "todo", label: "To Do" },
-  { key: "inProgress", label: "In Progress" },
+  { key: "todo", label: "Do" },
+  { key: "inProgress", label: "Doing" },
   { key: "done", label: "Done" },
 ];
 const COLUMN_KEYS = COLUMNS.map((c) => c.key);
