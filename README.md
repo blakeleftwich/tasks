@@ -35,6 +35,21 @@ npx serve .
    [`config.js`](config.js). Both are safe to commit — Row-Level Security restricts every row to its owner.
 5. Redeploy. Sign in from the header; existing local tasks migrate up on first sign-in.
 
+## Team mode — one shared list (optional)
+
+By default each signed-in user has their own private board. To instead share a single
+list across a small team:
+
+1. Run [`supabase-team.sql`](supabase-team.sql) in the Supabase SQL Editor.
+2. In that script, add the email each teammate signs in with to `team_members`
+   (including your own — if your email is missing you'll lose access to the board).
+3. Teammates sign in with a magic link from the same site. Everyone now sees and edits
+   the same list, and edits sync live.
+
+It's a deliberately simple model: one shared list, membership managed in the database,
+and everyone can edit everything. Reverting to private mode is a one-line policy swap
+(noted at the bottom of the script).
+
 ## Deploy
 
 ```bash
