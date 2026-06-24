@@ -354,8 +354,9 @@ function renderCard(task, colIndex) {
   });
   notes.addEventListener("change", () => updateTask(task.id, { notes: notes.value }));
 
-  // Due badge.
+  // Due badge — the meta row only appears once a due date is set.
   const badge = node.querySelector(".due-badge");
+  node.querySelector(".card-meta").hidden = !task.due;
   if (task.due) {
     badge.hidden = false;
     badge.textContent = "📅 " + formatShort(task.due);
