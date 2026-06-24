@@ -327,6 +327,14 @@ function renderCarryOver() {
   }
 }
 
+function setMenuState(btn, expanded) {
+  btn.textContent = expanded ? "▴" : "▾";
+  btn.setAttribute("aria-expanded", String(expanded));
+  const label = expanded ? "Collapse" : "Expand";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+}
+
 function renderCard(task, colIndex) {
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.id = task.id;
@@ -388,9 +396,9 @@ function renderCard(task, colIndex) {
 
   node.querySelector(".delete-btn").addEventListener("click", () => deleteTask(task.id));
 
-  // Hamburger toggles the card open/closed (description + options).
+  // Up/down arrow toggles the card open/closed (description + options).
   const menuBtn = node.querySelector(".menu-btn");
-  menuBtn.setAttribute("aria-expanded", String(expandedIds.has(task.id)));
+  setMenuState(menuBtn, expandedIds.has(task.id));
   menuBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     const expanded = node.classList.toggle("expanded");
@@ -400,7 +408,7 @@ function renderCard(task, colIndex) {
     } else {
       expandedIds.delete(task.id);
     }
-    menuBtn.setAttribute("aria-expanded", String(expanded));
+    setMenuState(menuBtn, expanded);
   });
 
   // Press-and-move anywhere on the card (incl. text fields) starts a drag.
