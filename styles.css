@@ -619,7 +619,7 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
 }
 .checklist-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* top-align so multi-line steps look right */
   gap: 6px;
 }
 .checklist-item.reordering { opacity: 0.5; }
@@ -632,6 +632,7 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
   font-size: 0.8rem;
   line-height: 1;
   padding: 0 1px;
+  margin-top: 4px;
   user-select: none;
   touch-action: none;
 }
@@ -641,17 +642,21 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
   flex: none;
   cursor: pointer;
   accent-color: var(--done);
+  margin-top: 4px;
 }
 .checklist-text {
   flex: 1;
   font: inherit;
   font-size: 0.82rem;
+  line-height: 1.35;
   border: none;
   background: transparent;
   color: var(--text);
   padding: 2px 4px;
   border-radius: 4px;
   min-width: 0;
+  resize: none;
+  overflow: hidden;
 }
 .checklist-text:focus { outline: none; background: #f3f7ff; }
 .checklist-item.done .checklist-text { text-decoration: line-through; color: var(--muted); }
@@ -663,7 +668,7 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
-  padding: 0 4px;
+  padding: 2px 4px 0;
   border-radius: 4px;
   opacity: 0.5;
 }

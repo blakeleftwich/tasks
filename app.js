@@ -347,8 +347,8 @@ function render() {
     board.appendChild(column);
   });
 
-  // Size descriptions of already-expanded cards now that they're in the DOM.
-  board.querySelectorAll(".card.expanded .card-notes").forEach(autoGrow);
+  // Size auto-growing fields of expanded cards now that they're in the DOM.
+  board.querySelectorAll(".card.expanded .card-notes, .card.expanded .checklist-text").forEach(autoGrow);
 
   if (beforeFlip) flipCards(beforeFlip);
   flipNextRender = false;
@@ -476,7 +476,7 @@ function setCardExpanded(node, open) {
   if (!node) return;
   node.classList.toggle("expanded", open);
   if (open) {
-    autoGrow(node.querySelector(".card-notes"));
+    node.querySelectorAll(".card-notes, .checklist-text").forEach(autoGrow);
   } else {
     node.querySelector(".card-title").setAttribute("readonly", ""); // reset edit state
   }
@@ -568,10 +568,11 @@ function renderChecklist(node, task, checklist) {
     cb.checked = item.done;
     cb.addEventListener("change", () => toggleChecklistItem(task.id, item.id));
 
-    const text = document.createElement("input");
-    text.type = "text";
+    const text = document.createElement("textarea");
     text.className = "checklist-text";
+    text.rows = 1;
     text.value = item.text;
+    text.addEventListener("input", () => autoGrow(text));
     text.addEventListener("change", () => updateChecklistText(task.id, item.id, text.value));
 
     const del = document.createElement("button");
