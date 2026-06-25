@@ -465,7 +465,13 @@ body.dragging-active .empty-hint { display: none; }
   transition: grid-template-rows 0.22s ease;
 }
 .card.expanded .card-body { grid-template-rows: 1fr; }
-.card-body-inner { overflow: hidden; min-height: 0; }
+.card-body-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.card.expanded .card-body-inner { opacity: 1; }
 
 .card-notes {
   width: 100%;

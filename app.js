@@ -240,7 +240,10 @@ function advanceTask(id) {
   if (!task) return;
   const order = ["todo", "inProgress", "done"];
   const next = task.status === "done" ? "inProgress" : order[order.indexOf(task.status) + 1];
-  if (next && next !== task.status) moveTaskTo(id, next);
+  if (next && next !== task.status) {
+    flipNextRender = true;
+    moveTaskTo(id, next);
+  }
 }
 
 // Move a task into a column, optionally before a specific card.
@@ -287,6 +290,7 @@ function carryOver() {
   selectedDate = today;
   saveLocal();
   persist([...changed.values()]);
+  flipNextRender = true;
   render();
 }
 
@@ -297,6 +301,7 @@ const board = document.getElementById("board");
 const cardTemplate = document.getElementById("card-template");
 
 function render() {
+  const beforeFlip = flipNextRender ? snapshotCards() : null;
   const boardTitle = currentBoardName();
   document.getElementById("app-title").textContent = boardTitle;
   document.title = boardTitle === "Daily Task Board" ? boardTitle : `${boardTitle} · Daily Task Board`;
@@ -340,6 +345,9 @@ function render() {
 
   // Size descriptions of already-expanded cards now that they're in the DOM.
   board.querySelectorAll(".card.expanded .card-notes").forEach(autoGrow);
+
+  if (beforeFlip) flipCards(beforeFlip);
+  flipNextRender = false;
 }
 
 function renderCarryOver() {
@@ -442,15 +450,68 @@ function renderCard(task) {
     if (e.target.closest(".check, .delete-btn")) return;
     if (expandedCardId === task.id) return; // already open — inner clicks edit
     e.stopPropagation();
-    expandedCardId = task.id;
     selectedCardId = task.id;
-    render();
+    expandCard(task.id);
   });
 
   // Drag (mouse) is always available.
   node.addEventListener("pointerdown", (e) => onCardPointerDown(e, node, task.id));
 
   return node;
+}
+
+/* ---------- Expand / collapse (animated on the live node) ---------- */
+function setCardExpanded(node, open) {
+  if (!node) return;
+  node.classList.toggle("expanded", open);
+  const title = node.querySelector(".card-title");
+  if (open) {
+    title.removeAttribute("readonly");
+    autoGrow(node.querySelector(".card-notes"));
+  } else {
+    title.setAttribute("readonly", "");
+  }
+}
+
+function expandCard(id) {
+  if (expandedCardId && expandedCardId !== id) {
+    setCardExpanded(board.querySelector(`.card[data-id="${expandedCardId}"]`), false);
+  }
+  const node = board.querySelector(`.card[data-id="${id}"]`);
+  if (!node) return;
+  expandedCardId = id;
+  selectedCardId = id;
+  setCardExpanded(node, true);
+}
+
+function collapseCard() {
+  if (!expandedCardId) return;
+  setCardExpanded(board.querySelector(`.card[data-id="${expandedCardId}"]`), false);
+  expandedCardId = null;
+}
+
+/* ---------- FLIP: glide cards to their new spot on the next render ---------- */
+let flipNextRender = false;
+function snapshotCards() {
+  const m = new Map();
+  board.querySelectorAll(".card").forEach((el) => m.set(el.dataset.id, el.getBoundingClientRect()));
+  return m;
+}
+function flipCards(before) {
+  board.querySelectorAll(".card").forEach((el) => {
+    const old = before.get(el.dataset.id);
+    if (!old) return;
+    const now = el.getBoundingClientRect();
+    const dx = old.left - now.left;
+    const dy = old.top - now.top;
+    if (!dx && !dy) return;
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1)";
+      el.style.transform = "";
+    });
+  });
 }
 
 function renderSwatches(container, task) {
@@ -1146,10 +1207,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
   if (!expandedCardId) return;
   const card = e.target.closest(".card");
-  if (!card || card.dataset.id !== expandedCardId) {
-    expandedCardId = null;
-    render();
-  }
+  if (!card || card.dataset.id !== expandedCardId) collapseCard();
 });
 
 /* =====================================================================
@@ -1217,8 +1275,7 @@ document.addEventListener("keydown", (e) => {
 
   if (e.key === "Escape") {
     if (expandedCardId) {
-      expandedCardId = null;
-      render();
+      collapseCard();
     } else if (searchQuery) {
       searchQuery = "";
       document.getElementById("search").value = "";
@@ -1248,8 +1305,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") return e.preventDefault(), moveSelection(1, 0);
   if (e.key === "Enter" && selectedCardId) {
     e.preventDefault();
-    expandedCardId = selectedCardId;
-    render();
+    expandCard(selectedCardId);
     return;
   }
   if ((e.key === "Delete" || e.key === "Backspace") && selectedCardId) {
