@@ -390,23 +390,23 @@ html, body {
 
 .add-row { padding: 0 12px 14px; }
 
-.add-btn {
+.add-input {
   width: 100%;
   font: inherit;
-  font-size: 0.9rem;
-  cursor: pointer;
+  font-size: 0.88rem;
   border: 1px dashed #cbd5e6;
   background: transparent;
-  color: var(--muted);
-  border-radius: 8px;
-  padding: 10px;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.add-btn:hover {
-  background: #f7f9fd;
   color: var(--text);
+  border-radius: 8px;
+  padding: 9px 11px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.add-input::placeholder { color: var(--muted); }
+.add-input:focus {
+  outline: none;
   border-color: var(--todo);
+  border-style: solid;
+  background: var(--surface);
 }
 
 /* ---------- Card ---------- */
@@ -849,7 +849,7 @@ body { padding-bottom: 46px; }
   .column-header .count { padding: 1px 6px; font-size: 0.68rem; }
   .card-list { padding: 6px; gap: 6px; }
   .add-row { padding: 0 6px 8px; }
-  .add-btn { padding: 7px; font-size: 0.78rem; }
+  .add-input { padding: 7px; font-size: 0.78rem; }
   .card { padding: 7px 8px; border-radius: 8px; }
   .card-top { gap: 6px; }
   .card-title { font-size: 0.78rem; }

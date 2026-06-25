@@ -208,6 +208,16 @@ function addTask(status) {
   }
 }
 
+// Inline add: create a named task and keep the add field focused for the next one.
+function quickAddTask(status, title) {
+  const task = normalizeTask({ day: selectedDate, status, position: group(selectedDate, status).length, title });
+  tasks.push(task);
+  persist([task]);
+  render();
+  const input = document.querySelector(`.column[data-col="${status}"] .add-input`);
+  if (input) input.focus();
+}
+
 function updateTask(id, fields) {
   const task = getTask(id);
   if (!task) return;
@@ -328,7 +338,7 @@ function render() {
         <span class="count">${items.length}</span>
       </div>
       <div class="card-list"></div>
-      <div class="add-row"><button class="add-btn">+ Add task</button></div>
+      <div class="add-row"><input class="add-input" type="text" placeholder="+ Add a task…" aria-label="Add a task to ${col.label}" /></div>
     `;
 
     const list = column.querySelector(".card-list");
@@ -341,9 +351,11 @@ function render() {
       items.forEach((task) => list.appendChild(renderCard(task)));
     }
 
-    column.querySelector(".add-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      addTask(col.key);
+    const addInput = column.querySelector(".add-input");
+    addInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const value = addInput.value.trim();
+      if (value) quickAddTask(col.key, value);
     });
     board.appendChild(column);
   });
