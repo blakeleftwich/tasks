@@ -430,8 +430,14 @@ function renderCard(task) {
   }
   node.querySelector(".card-meta").hidden = !task.due && !task.priority && checklist.length === 0;
 
-  // Description.
+  // Description. Enter finishes (blurs); Shift+Enter still inserts a newline.
   notes.value = task.notes;
+  notes.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      notes.blur();
+    }
+  });
   notes.addEventListener("input", () => {
     autoGrow(notes);
     saveLocal();
