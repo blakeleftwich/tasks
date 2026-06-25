@@ -35,36 +35,22 @@ html, body {
 
 /* ---------- Header ---------- */
 .app-header {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
-  padding: 20px clamp(16px, 4vw, 40px);
+  padding: 16px clamp(16px, 4vw, 40px);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
+.app-header > .title-block { justify-self: start; }
+.app-header > .date-nav { justify-self: center; }
+.app-header > .header-right { justify-self: end; }
 
 .title-block h1 {
   margin: 0;
   font-size: 1.4rem;
   letter-spacing: -0.01em;
-}
-
-/* Centered date bar below the header */
-.date-bar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px clamp(16px, 4vw, 40px);
-}
-
-.date-bar .today-anchor,
-.date-bar #today-btn {
-  position: absolute;
-  right: clamp(16px, 4vw, 40px);
 }
 
 .date-display-wrap { position: relative; display: inline-flex; }
@@ -736,6 +722,10 @@ body.dragging-active .empty-hint { display: none; }
 /* ---------- Responsive ---------- */
 @media (max-width: 760px) {
   .board { grid-template-columns: 1fr; }
-  .app-header { flex-direction: column; align-items: flex-start; }
+  .app-header { grid-template-columns: 1fr; }
+  .app-header > .title-block,
+  .app-header > .date-nav,
+  .app-header > .header-right { justify-self: stretch; }
+  .date-nav { justify-content: flex-start; flex-wrap: wrap; }
   .header-right { width: 100%; justify-content: space-between; }
 }
