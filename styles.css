@@ -57,6 +57,89 @@ html, body {
   font-size: 0.9rem;
 }
 
+/* Board controls in the header (board name = heading) */
+.board-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.board-name,
+.board-name-input {
+  font: inherit;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  max-width: 320px;
+}
+
+.board-name {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-name:hover:not(.not-owner) { background: #eef2fb; }
+.board-name.not-owner { cursor: default; }
+
+.board-name-input {
+  border: 1px solid var(--todo);
+  border-radius: 6px;
+  padding: 1px 5px;
+  background: var(--surface);
+}
+.board-name-input:focus { outline: none; }
+
+.board-switch {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.board-switch:hover { background: #eef2fb; color: var(--text); }
+
+.board-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  z-index: 1500;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-drag);
+  padding: 6px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.board-menu-item {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.board-menu-item:hover { background: #eef2fb; }
+.board-menu-item.current { font-weight: 600; color: var(--todo); }
+
 .header-right {
   display: flex;
   align-items: center;
@@ -139,25 +222,6 @@ html, body {
   gap: 10px;
   padding: 12px clamp(16px, 4vw, 40px) 0;
   min-height: 0;
-}
-
-.board-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.board-picker {
-  font: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  max-width: 220px;
 }
 
 .carry-btn {

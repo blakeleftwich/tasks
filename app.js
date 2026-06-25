@@ -737,7 +737,7 @@ async function setUser(nextUser) {
     currentBoardId = null;
   }
   renderAuthBar();
-  renderBoardBar();
+  renderBoardControls();
   render();
 }
 
@@ -820,7 +820,7 @@ async function switchBoard(id) {
   currentBoardId = id;
   localStorage.setItem("currentBoardId", id);
   await pullRemote(false);
-  renderBoardBar();
+  renderBoardControls();
   render();
 }
 
@@ -946,45 +946,119 @@ function renderAuthBar(message) {
   }
 }
 
-function renderBoardBar() {
-  const bar = document.getElementById("board-bar");
-  if (!bar) return;
+function renderBoardControls() {
+  const appTitle = document.getElementById("app-title");
+  const wrap = document.getElementById("board-controls");
+  if (!wrap || !appTitle) return;
+
   if (!user || !currentBoardId) {
-    bar.hidden = true;
+    wrap.hidden = true;
+    appTitle.hidden = false; // plain "Daily Task Board" when signed out
     return;
   }
-  bar.hidden = false;
-  bar.innerHTML = "";
+  appTitle.hidden = true;
+  wrap.hidden = false;
+  wrap.innerHTML = "";
 
-  const picker = document.createElement("select");
-  picker.className = "board-picker";
-  picker.setAttribute("aria-label", "Board");
-  boards
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .forEach((b) => {
-      const opt = document.createElement("option");
-      opt.value = b.id;
-      opt.textContent = b.name + (b.owner_id === user.id ? "" : " (shared)");
-      if (b.id === currentBoardId) opt.selected = true;
-      picker.appendChild(opt);
-    });
-  picker.addEventListener("change", () => switchBoard(picker.value));
-  bar.appendChild(picker);
+  const current = boards.find((b) => b.id === currentBoardId);
+  const owned = !!(current && current.owner_id === user.id);
+
+  // Board name as the heading — click to rename (owner only).
+  const nameBtn = document.createElement("button");
+  nameBtn.className = "board-name" + (owned ? "" : " not-owner");
+  nameBtn.textContent = current ? current.name : "Board";
+  if (owned) {
+    nameBtn.title = "Click to rename";
+    nameBtn.addEventListener("click", () => startRename(nameBtn, current));
+  } else {
+    nameBtn.disabled = true;
+  }
+  wrap.appendChild(nameBtn);
+
+  // Down arrow — open the board switcher.
+  const switchBtn = document.createElement("button");
+  switchBtn.className = "board-switch";
+  switchBtn.textContent = "▾";
+  switchBtn.setAttribute("aria-label", "Switch board");
+  switchBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const menu = document.getElementById("board-menu");
+    if (menu) menu.hidden = !menu.hidden;
+  });
+  wrap.appendChild(switchBtn);
 
   const newBtn = document.createElement("button");
   newBtn.className = "ghost-btn";
   newBtn.textContent = "+ New board";
   newBtn.addEventListener("click", createBoard);
-  bar.appendChild(newBtn);
+  wrap.appendChild(newBtn);
 
   const shareBtn = document.createElement("button");
   shareBtn.className = "ghost-btn";
   shareBtn.textContent = "🔗 Share";
   shareBtn.title = "Copy a link that lets a teammate join this board";
   shareBtn.addEventListener("click", () => shareBoard(shareBtn));
-  bar.appendChild(shareBtn);
+  wrap.appendChild(shareBtn);
+
+  // Switch dropdown (hidden until the arrow is clicked).
+  const menu = document.createElement("div");
+  menu.className = "board-menu";
+  menu.id = "board-menu";
+  menu.hidden = true;
+  boards
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((b) => {
+      const item = document.createElement("button");
+      item.className = "board-menu-item" + (b.id === currentBoardId ? " current" : "");
+      item.textContent = b.name + (b.owner_id === user.id ? "" : " (shared)");
+      item.addEventListener("click", () => {
+        menu.hidden = true;
+        switchBoard(b.id);
+      });
+      menu.appendChild(item);
+    });
+  wrap.appendChild(menu);
 }
+
+// Inline-rename the current board. The board id never changes, so share links
+// keep working and members see the new name on their next load.
+function startRename(nameBtn, board) {
+  const input = document.createElement("input");
+  input.className = "board-name-input";
+  input.value = board.name;
+  nameBtn.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const commit = async () => {
+    if (settled) return;
+    settled = true;
+    const newName = input.value.trim();
+    if (newName && newName !== board.name) {
+      const { error } = await supa.from("boards").update({ name: newName }).eq("id", board.id);
+      if (error) console.error("Rename failed:", error.message);
+      else board.name = newName;
+    }
+    renderBoardControls();
+    render();
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      input.value = board.name;
+      input.blur();
+    }
+  });
+}
+
+// Close the board switcher when clicking outside it.
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("board-menu");
+  if (menu && !menu.hidden && !e.target.closest("#board-menu")) menu.hidden = true;
+});
 
 /* =====================================================================
  * Confirmation modal
