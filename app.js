@@ -28,6 +28,7 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 let tasks = []; // flat array of task objects
 let selectedDate = todayKey();
 const expandedIds = new Set(); // cards expanded via the menu button (view state, not persisted)
+let openMenuCardId = null; // card whose ⋯ properties popover is open
 
 let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
@@ -275,7 +276,7 @@ function render() {
   const boardTitle = currentBoardName();
   document.getElementById("app-title").textContent = boardTitle;
   document.title = boardTitle === "Daily Task Board" ? boardTitle : `${boardTitle} · Daily Task Board`;
-  document.getElementById("long-date").textContent = formatLong(selectedDate);
+  document.getElementById("date-display").textContent = formatLong(selectedDate);
   document.getElementById("date-picker").value = selectedDate;
   renderCarryOver();
 
@@ -398,6 +399,23 @@ function renderCard(task) {
 
   renderSwatches(node.querySelector(".label-swatches"), task);
 
+  // Properties popover (⋯): priority / due date / label. Stays open across the
+  // re-render that a property change triggers.
+  const propsBtn = node.querySelector(".props-btn");
+  const cardMenu = node.querySelector(".card-menu");
+  cardMenu.hidden = openMenuCardId !== task.id;
+  propsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (openMenuCardId === task.id) {
+      openMenuCardId = null;
+      cardMenu.hidden = true;
+    } else {
+      document.querySelectorAll(".card-menu").forEach((m) => (m.hidden = true));
+      openMenuCardId = task.id;
+      cardMenu.hidden = false;
+    }
+  });
+
   node.querySelector(".delete-btn").addEventListener("click", async () => {
     const name = task.title.trim();
     const ok = await confirmModal({
@@ -460,6 +478,13 @@ function renderChecklist(node, task, checklist) {
   checklist.forEach((item) => {
     const li = document.createElement("li");
     li.className = "checklist-item" + (item.done ? " done" : "");
+    li.dataset.itemId = item.id;
+
+    const handle = document.createElement("span");
+    handle.className = "checklist-handle";
+    handle.textContent = "⠿";
+    handle.title = "Drag to reorder";
+    handle.addEventListener("pointerdown", (e) => onChecklistHandleDown(e, task.id, li));
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -478,7 +503,7 @@ function renderChecklist(node, task, checklist) {
     del.title = "Remove step";
     del.addEventListener("click", () => deleteChecklistItem(task.id, item.id));
 
-    li.append(cb, text, del);
+    li.append(handle, cb, text, del);
     list.appendChild(li);
   });
 
@@ -529,6 +554,56 @@ function deleteChecklistItem(taskId, itemId) {
   task.checklist = checklistOf(task).filter((i) => i.id !== itemId);
   updateTask(taskId, { checklist: task.checklist });
   render();
+}
+
+/* ---------- Checklist reorder (drag handle, pointer-based) ---------- */
+let listDrag = null;
+
+function onChecklistHandleDown(e, taskId, li) {
+  if (e.button !== 0 || e.pointerType !== "mouse") return;
+  e.stopPropagation(); // keep the card itself from starting a drag
+  e.preventDefault();
+  listDrag = { taskId, li, ul: li.parentElement };
+  li.classList.add("reordering");
+  window.addEventListener("pointermove", onChecklistMove);
+  window.addEventListener("pointerup", onChecklistUp, { once: true });
+}
+
+function onChecklistMove(e) {
+  if (!listDrag) return;
+  e.preventDefault();
+  const { ul, li } = listDrag;
+  const after = checklistAfterElement(ul, e.clientY);
+  if (after == null) ul.appendChild(li);
+  else ul.insertBefore(li, after);
+}
+
+function onChecklistUp() {
+  window.removeEventListener("pointermove", onChecklistMove);
+  if (!listDrag) return;
+  const { taskId, ul, li } = listDrag;
+  li.classList.remove("reordering");
+  const order = [...ul.querySelectorAll(".checklist-item")].map((el) => el.dataset.itemId);
+  const task = getTask(taskId);
+  if (task && Array.isArray(task.checklist)) {
+    task.checklist.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    updateTask(taskId, { checklist: task.checklist });
+  }
+  listDrag = null;
+  render();
+}
+
+function checklistAfterElement(ul, y) {
+  const items = [...ul.querySelectorAll(".checklist-item:not(.reordering)")];
+  return items.reduce(
+    (closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) return { offset, element: child };
+      return closest;
+    },
+    { offset: Number.NEGATIVE_INFINITY, element: null }
+  ).element;
 }
 
 function autoGrow(textarea) {
@@ -1060,6 +1135,14 @@ document.addEventListener("click", (e) => {
   if (menu && !menu.hidden && !e.target.closest("#board-menu")) menu.hidden = true;
 });
 
+// Close any open card properties popover when clicking outside it.
+document.addEventListener("click", (e) => {
+  if (openMenuCardId && !e.target.closest(".card-menu") && !e.target.closest(".props-btn")) {
+    openMenuCardId = null;
+    document.querySelectorAll(".card-menu").forEach((m) => (m.hidden = true));
+  }
+});
+
 /* =====================================================================
  * Confirmation modal
  * ===================================================================== */
@@ -1113,6 +1196,15 @@ document.getElementById("date-picker").addEventListener("change", (e) => {
   if (e.target.value) {
     selectedDate = e.target.value;
     render();
+  }
+});
+// Click the date text to open the native date picker.
+document.getElementById("date-display").addEventListener("click", () => {
+  const picker = document.getElementById("date-picker");
+  try {
+    picker.showPicker();
+  } catch (e) {
+    picker.focus();
   }
 });
 document.getElementById("carry-over").addEventListener("click", carryOver);

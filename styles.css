@@ -51,11 +51,37 @@ html, body {
   letter-spacing: -0.01em;
 }
 
-.long-date {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
+/* Centered date bar below the header */
+.date-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px clamp(16px, 4vw, 40px);
 }
+
+.date-bar .today-anchor,
+.date-bar #today-btn {
+  position: absolute;
+  right: clamp(16px, 4vw, 40px);
+}
+
+.date-display-wrap { position: relative; display: inline-flex; }
+
+.date-display {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.date-display:hover { background: #eef2fb; }
 
 /* Board controls in the header (board name = heading) */
 .board-controls {
@@ -153,14 +179,16 @@ html, body {
   gap: 8px;
 }
 
+/* Invisible overlay at the bottom of the date text; anchors the native picker. */
 .date-picker {
-  font: inherit;
-  font-size: 0.9rem;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: none;
 }
 
 .icon-btn,
@@ -337,6 +365,7 @@ html, body {
 
 /* ---------- Card ---------- */
 .card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 4px solid var(--border);
@@ -525,6 +554,21 @@ body.dragging-active .empty-hint { display: none; }
   align-items: center;
   gap: 6px;
 }
+.checklist-item.reordering { opacity: 0.5; }
+
+.checklist-handle {
+  flex: none;
+  cursor: grab;
+  color: var(--muted);
+  opacity: 0.4;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0 1px;
+  user-select: none;
+  touch-action: none;
+}
+.checklist-item:hover .checklist-handle { opacity: 0.9; }
+.checklist-handle:active { cursor: grabbing; }
 .checklist-item input[type="checkbox"] {
   flex: none;
   cursor: pointer;
@@ -569,16 +613,44 @@ body.dragging-active .empty-hint { display: none; }
 }
 .checklist-input:focus { outline: none; border-color: var(--todo); }
 
-/* Controls (revealed when the card is expanded via the menu button) */
-.card-controls {
-  display: none;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+/* Properties popover, opened by the ⋯ button */
+.props-btn {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 5px;
+  transition: background 0.15s, color 0.15s;
 }
+.props-btn:hover { background: #eef2fb; color: var(--text); }
 
-.card.expanded .card-controls { display: flex; }
+.card-menu {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-drag);
+}
+.card-menu-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.card-menu .label-swatches { margin-top: 2px; }
 
 .priority-select,
 .due-input {

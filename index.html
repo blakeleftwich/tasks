@@ -13,19 +13,24 @@
     <div class="title-block">
       <h1 id="app-title" class="app-title">Daily Task Board</h1>
       <div id="board-controls" class="board-controls" hidden></div>
-      <p id="long-date" class="long-date"></p>
     </div>
 
     <div class="header-right">
-      <div class="date-nav">
-        <button id="prev-day" class="icon-btn" title="Previous day" aria-label="Previous day">◀</button>
-        <input id="date-picker" type="date" class="date-picker" aria-label="Select date" />
-        <button id="next-day" class="icon-btn" title="Next day" aria-label="Next day">▶</button>
-        <button id="today-btn" class="ghost-btn">Today</button>
-      </div>
       <div id="auth-bar" class="auth-bar" hidden></div>
     </div>
   </header>
+
+  <div class="date-bar">
+    <div class="date-nav">
+      <button id="prev-day" class="icon-btn" title="Previous day" aria-label="Previous day">◀</button>
+      <span class="date-display-wrap">
+        <button id="date-display" class="date-display" type="button" aria-label="Pick a date"></button>
+        <input id="date-picker" type="date" class="date-picker" aria-label="Select date" />
+      </span>
+      <button id="next-day" class="icon-btn" title="Next day" aria-label="Next day">▶</button>
+    </div>
+    <button id="today-btn" class="ghost-btn">Today</button>
+  </div>
 
   <div class="toolbar">
     <button id="carry-over" class="ghost-btn carry-btn" hidden></button>
@@ -57,6 +62,7 @@
       <div class="card-top">
         <span class="priority-dot" hidden></span>
         <input class="card-title" type="text" placeholder="Task name" />
+        <button class="props-btn" type="button" title="Options" aria-label="Options">⋯</button>
         <button class="menu-btn" type="button" title="Expand" aria-label="Expand" aria-expanded="false">▾</button>
         <button class="delete-btn" title="Delete task" aria-label="Delete task">×</button>
       </div>
@@ -73,14 +79,17 @@
         <input class="checklist-input" type="text" placeholder="+ Add a step…" aria-label="Add a step" />
       </div>
 
-      <div class="card-controls">
+      <div class="card-menu" hidden>
+        <label class="card-menu-label">Priority</label>
         <select class="priority-select" title="Priority" aria-label="Priority">
-          <option value="">Priority</option>
+          <option value="">None</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+        <label class="card-menu-label">Due date</label>
         <input class="due-input" type="date" title="Due date" aria-label="Due date" />
+        <label class="card-menu-label">Label</label>
         <div class="label-swatches" role="group" aria-label="Color label"></div>
       </div>
     </article>
