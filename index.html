@@ -60,10 +60,17 @@
         <button class="menu-btn" type="button" title="Expand" aria-label="Expand" aria-expanded="false">▾</button>
         <button class="delete-btn" title="Delete task" aria-label="Delete task">×</button>
       </div>
-      <textarea class="card-notes" placeholder="Add a description…" rows="1"></textarea>
 
       <div class="card-meta">
         <span class="due-badge" hidden></span>
+        <span class="progress-chip" hidden></span>
+      </div>
+
+      <textarea class="card-notes" placeholder="Add a description…" rows="1"></textarea>
+
+      <div class="card-checklist">
+        <ul class="checklist-items"></ul>
+        <input class="checklist-input" type="text" placeholder="+ Add a step…" aria-label="Add a step" />
       </div>
 
       <div class="card-controls">

@@ -419,6 +419,92 @@ body.dragging-active .empty-hint { display: none; }
   border-color: #fecaca;
 }
 
+/* Checklist progress chip (visible even when collapsed) */
+.progress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.progress-track {
+  width: 46px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--progress);
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+.progress-chip.complete { color: var(--done); }
+.progress-chip.complete .progress-fill { background: var(--done); }
+
+/* Checklist editor (shown when expanded) */
+.card-checklist { display: none; margin-top: 8px; }
+.card.expanded .card-checklist { display: block; }
+
+.checklist-items {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.checklist-item input[type="checkbox"] {
+  flex: none;
+  cursor: pointer;
+  accent-color: var(--done);
+}
+.checklist-text {
+  flex: 1;
+  font: inherit;
+  font-size: 0.82rem;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 2px 4px;
+  border-radius: 4px;
+  min-width: 0;
+}
+.checklist-text:focus { outline: none; background: #f3f7ff; }
+.checklist-item.done .checklist-text { text-decoration: line-through; color: var(--muted); }
+.checklist-del {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0.5;
+}
+.checklist-item:hover .checklist-del { opacity: 1; }
+.checklist-del:hover { color: #ef4444; }
+.checklist-input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.82rem;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.checklist-input:focus { outline: none; border-color: var(--todo); }
+
 /* Controls (revealed when the card is expanded via the menu button) */
 .card-controls {
   display: none;

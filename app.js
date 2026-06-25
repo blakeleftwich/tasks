@@ -33,6 +33,7 @@ let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
 let boards = []; // boards the signed-in user belongs to
 let currentBoardId = null; // active board (null = single-board / legacy mode)
+let checklistSyncable = false; // whether the tasks.checklist column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -134,6 +135,7 @@ function normalizeTask(t) {
     due: t.due || null,
     priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : null,
     label: t.label || null,
+    checklist: Array.isArray(t.checklist) ? t.checklist : [],
     updated_at: t.updated_at || nowIso(),
   };
 }
@@ -364,14 +366,26 @@ function renderCard(task) {
   });
   notes.addEventListener("change", () => updateTask(task.id, { notes: notes.value }));
 
-  // Due badge — the meta row only appears once a due date is set.
+  // Meta row (due badge + checklist progress) — shown if either has content.
+  const checklist = Array.isArray(task.checklist) ? task.checklist : [];
   const badge = node.querySelector(".due-badge");
-  node.querySelector(".card-meta").hidden = !task.due;
+  node.querySelector(".card-meta").hidden = !task.due && checklist.length === 0;
   if (task.due) {
     badge.hidden = false;
     badge.textContent = "📅 " + formatShort(task.due);
     if (isOverdue(task)) badge.classList.add("overdue");
   }
+  const chip = node.querySelector(".progress-chip");
+  if (checklist.length) {
+    const done = checklist.filter((i) => i.done).length;
+    const pct = Math.round((done / checklist.length) * 100);
+    chip.hidden = false;
+    if (done === checklist.length) chip.classList.add("complete");
+    chip.innerHTML = `<span class="progress-track"><span class="progress-fill" style="width:${pct}%"></span></span><span class="progress-count">${done}/${checklist.length}</span>`;
+  }
+
+  // Checklist editor.
+  renderChecklist(node, task, checklist);
 
   // Controls.
   const prio = node.querySelector(".priority-select");
@@ -440,6 +454,83 @@ function updateAndRender(id, fields) {
   render();
 }
 
+/* ---------- Checklist (sub-steps) ---------- */
+function renderChecklist(node, task, checklist) {
+  const list = node.querySelector(".checklist-items");
+  checklist.forEach((item) => {
+    const li = document.createElement("li");
+    li.className = "checklist-item" + (item.done ? " done" : "");
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = item.done;
+    cb.addEventListener("change", () => toggleChecklistItem(task.id, item.id));
+
+    const text = document.createElement("input");
+    text.type = "text";
+    text.className = "checklist-text";
+    text.value = item.text;
+    text.addEventListener("change", () => updateChecklistText(task.id, item.id, text.value));
+
+    const del = document.createElement("button");
+    del.className = "checklist-del";
+    del.textContent = "×";
+    del.title = "Remove step";
+    del.addEventListener("click", () => deleteChecklistItem(task.id, item.id));
+
+    li.append(cb, text, del);
+    list.appendChild(li);
+  });
+
+  const addInput = node.querySelector(".checklist-input");
+  addInput.addEventListener("keydown", (e) => {
+    const value = addInput.value.trim();
+    if (e.key === "Enter" && value) addChecklistItem(task.id, value);
+  });
+}
+
+function checklistOf(task) {
+  if (!Array.isArray(task.checklist)) task.checklist = [];
+  return task.checklist;
+}
+
+function addChecklistItem(taskId, text) {
+  const task = getTask(taskId);
+  if (!task) return;
+  checklistOf(task).push({ id: makeId(), text, done: false });
+  updateTask(taskId, { checklist: task.checklist });
+  render();
+  const el = document.querySelector(`[data-id="${taskId}"] .checklist-input`);
+  if (el) el.focus();
+}
+
+function toggleChecklistItem(taskId, itemId) {
+  const task = getTask(taskId);
+  if (!task) return;
+  const item = checklistOf(task).find((i) => i.id === itemId);
+  if (!item) return;
+  item.done = !item.done;
+  updateTask(taskId, { checklist: task.checklist });
+  render();
+}
+
+function updateChecklistText(taskId, itemId, text) {
+  const task = getTask(taskId);
+  if (!task) return;
+  const item = checklistOf(task).find((i) => i.id === itemId);
+  if (!item) return;
+  item.text = text;
+  updateTask(taskId, { checklist: task.checklist });
+}
+
+function deleteChecklistItem(taskId, itemId) {
+  const task = getTask(taskId);
+  if (!task) return;
+  task.checklist = checklistOf(task).filter((i) => i.id !== itemId);
+  updateTask(taskId, { checklist: task.checklist });
+  render();
+}
+
 function autoGrow(textarea) {
   textarea.style.height = "auto";
   textarea.style.height = textarea.scrollHeight + "px";
@@ -448,8 +539,8 @@ function autoGrow(textarea) {
 /* =====================================================================
  * Drag & drop — custom pointer-based.
  * Holding the mouse button and moving drags the whole card (from anywhere on
- * it, including text fields); a plain click still edits. Touch/pen keep the
- * ← → buttons so list scrolling isn't hijacked.
+ * it, including text fields); a plain click still edits. Mouse only, so touch/pen
+ * list scrolling isn't hijacked.
  * ===================================================================== */
 let drag = null;
 let justDragged = false;
@@ -600,6 +691,7 @@ function loadScript(src) {
 function rowFromTask(t) {
   const row = { user_id: user.id };
   if (currentBoardId) row.board_id = currentBoardId;
+  if (checklistSyncable) row.checklist = t.checklist || [];
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -636,6 +728,8 @@ async function setUser(nextUser) {
   user = nextUser;
   if (user) {
     await setupBoards(); // load boards, honor a share link, pick the active board
+    const probe = await supa.from("tasks").select("checklist").limit(1);
+    checklistSyncable = !probe.error; // false until supabase-checklist.sql is run
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
     subscribeRealtime();
   } else {
