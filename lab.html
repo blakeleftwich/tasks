@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Card UX Lab</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>" />
+  <style>
+    :root {
+      --bg: #f4f6fb; --surface: #fff; --text: #1f2733; --muted: #6b7686; --border: #e3e8f0;
+      --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.1);
+      --shadow-lg: 0 10px 30px rgba(16,24,40,.18);
+      --todo: #3b82f6; --progress: #f59e0b; --done: #10b981;
+      --p-high: #ef4444; --p-medium: #f59e0b; --p-low: #60a5fa;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+
+    header { padding: 18px clamp(16px,4vw,40px) 0; }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    header p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
+    header a.back { color: var(--todo); text-decoration: none; font-size: .85rem; }
+
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      padding: 12px clamp(16px,4vw,40px);
+    }
+    .legend .k {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+      padding: 4px 10px; font-size: .76rem; color: var(--muted);
+    }
+    .legend kbd {
+      font-family: inherit; font-size: .72rem; font-weight: 600; color: var(--text);
+      background: var(--bg); border: 1px solid var(--border); border-bottom-width: 2px;
+      border-radius: 5px; padding: 1px 6px;
+    }
+
+    .searchbar { padding: 0 clamp(16px,4vw,40px) 4px; }
+    .searchbar input {
+      width: 100%; max-width: 360px; font: inherit; font-size: .9rem;
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface);
+    }
+    .searchbar input:focus { outline: none; border-color: var(--todo); }
+
+    .board { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; padding: 12px clamp(16px,4vw,40px) 40px; align-items: start; }
+    @media (max-width: 760px) { .board { grid-template-columns: 1fr; } }
+
+    .column { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+    .col-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+    .col-head .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .column[data-col="todo"] .dot { background: var(--todo); }
+    .column[data-col="doing"] .dot { background: var(--progress); }
+    .column[data-col="done"] .dot { background: var(--done); }
+    .col-head h2 { margin: 0; font-size: .95rem; }
+    .col-head .count { margin-left: auto; color: var(--muted); font-size: .8rem; background: var(--bg); border-radius: 999px; padding: 2px 9px; }
+    .card-list { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 24px; }
+    .add { margin: 0 12px 14px; width: calc(100% - 24px); font: inherit; font-size: .9rem; cursor: pointer;
+      border: 1px dashed #cbd5e6; background: transparent; color: var(--muted); border-radius: 8px; padding: 9px; }
+    .add:hover { color: var(--text); border-color: var(--todo); }
+
+    .card {
+      position: relative; background: var(--surface); border: 1px solid var(--border);
+      border-left: 4px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+      padding: 10px 12px; cursor: pointer; transition: box-shadow .15s, transform .15s, opacity .2s;
+    }
+    .card:hover { box-shadow: 0 4px 14px rgba(16,24,40,.12); transform: translateY(-1px); }
+    .card.sel { outline: 2px solid var(--todo); outline-offset: 1px; }
+    .card.p-high { border-left-color: var(--p-high); }
+    .card.p-medium { border-left-color: var(--p-medium); }
+    .card.p-low { border-left-color: var(--p-low); }
+    .card.completed { opacity: .6; }
+    .card.completed .c-title { text-decoration: line-through; color: var(--muted); }
+    .card.removing { opacity: 0; transform: scale(.95); }
+
+    .c-top { display: flex; align-items: flex-start; gap: 9px; }
+    .check {
+      flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%;
+      border: 2px solid #cbd5e6; background: var(--surface); cursor: pointer; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; line-height: 1;
+      transition: background .15s, border-color .15s;
+    }
+    .check:hover { border-color: var(--done); }
+    .check.on { background: var(--done); border-color: var(--done); }
+    .c-title { font-weight: 600; font-size: .92rem; line-height: 1.3; }
+
+    .c-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-left: 27px; }
+    .c-meta:empty { display: none; }
+    .chip { font-size: .72rem; border-radius: 999px; padding: 2px 9px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid transparent; }
+    .due { background: var(--bg); border-color: var(--border); color: var(--muted); }
+    .due.overdue { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .due.soon { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+    .pill-prio { font-weight: 600; }
+    .pill-prio.high { background: #fef2f2; color: #b91c1c; }
+    .pill-prio.medium { background: #fffbeb; color: #b45309; }
+    .pill-prio.low { background: #eff6ff; color: #1d4ed8; }
+    .label-chip { color: #fff; }
+    .prog { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--muted); }
+    .prog .track { width: 40px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .prog .fill { height: 100%; background: var(--progress); }
+    .prog.done .fill { background: var(--done); }
+
+    /* Detail slide-over */
+    .overlay { position: fixed; inset: 0; background: rgba(16,24,40,.35); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40; }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+    .panel {
+      position: fixed; top: 0; right: 0; height: 100%; width: min(420px, 92vw); z-index: 50;
+      background: var(--surface); box-shadow: var(--shadow-lg); border-left: 1px solid var(--border);
+      transform: translateX(100%); transition: transform .25s ease; padding: 20px; overflow-y: auto;
+    }
+    .panel.show { transform: translateX(0); }
+    .panel .x { position: absolute; top: 14px; right: 14px; border: none; background: transparent; font-size: 1.4rem; color: var(--muted); cursor: pointer; }
+    .panel h3 { margin: 6px 0 14px; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .panel .ptitle { width: 100%; font: inherit; font-size: 1.15rem; font-weight: 700; border: none; padding: 4px 0; margin-bottom: 14px; }
+    .panel .ptitle:focus { outline: none; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+    .field select, .field input[type=date], .panel textarea {
+      font: inherit; font-size: .9rem; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+    }
+    .panel textarea { width: 100%; resize: vertical; min-height: 70px; }
+    .lab-labels { display: flex; flex-wrap: wrap; gap: 6px; }
+    .lab-labels .label-chip { cursor: pointer; }
+    .lab-labels .add-label { background: var(--bg); color: var(--muted); border: 1px dashed var(--border); }
+    .pchecklist { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .pchecklist li { display: flex; align-items: center; gap: 8px; }
+    .pchecklist input[type=checkbox] { accent-color: var(--done); }
+    .pchecklist .t { flex: 1; font-size: .86rem; }
+    .pchecklist li.done .t { text-decoration: line-through; color: var(--muted); }
+    .pchecklist .del { border: none; background: none; color: var(--muted); cursor: pointer; }
+    .add-step { width: 100%; font: inherit; font-size: .85rem; padding: 6px 9px; border: 1px dashed var(--border); border-radius: 7px; background: transparent; }
+    .add-step:focus { outline: none; border-color: var(--todo); }
+    .hintbar { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: .78rem; }
+
+    .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+      background: var(--text); color: #fff; padding: 8px 16px; border-radius: 8px; font-size: .82rem; transition: all .2s; z-index: 60; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="back" href="./">← Back to the app</a>
+    <h1>✨ Card UX Lab</h1>
+    <p>A sandbox to try modern card interactions. Nothing here is saved — refresh to reset.</p>
+  </header>
+
+  <div class="legend">
+    <span class="k"><kbd>N</kbd> New</span>
+    <span class="k"><kbd>↵</kbd> Open</span>
+    <span class="k"><kbd>← ↑ ↓ →</kbd> Navigate</span>
+    <span class="k"><kbd>C</kbd> Complete</span>
+    <span class="k"><kbd>Del</kbd> Delete</span>
+    <span class="k"><kbd>/</kbd> Search</span>
+    <span class="k"><kbd>Esc</kbd> Close</span>
+    <span class="k">○ tap to complete · click a card to open · drag not needed</span>
+  </div>
+
+  <div class="searchbar"><input id="search" type="text" placeholder="Search tasks…  ( / )" /></div>
+
+  <main class="board" id="board"></main>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="panel" id="panel" aria-hidden="true"></aside>
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (function () {
+    const COLUMNS = [
+      { key: "todo", label: "To Do" },
+      { key: "doing", label: "In Progress" },
+      { key: "done", label: "Done" },
+    ];
+    const LABELS = { Design: "#3b82f6", Bug: "#ef4444", Urgent: "#f59e0b", Research: "#8b5cf6", Chore: "#10b981" };
+    const PRIORITIES = ["", "low", "medium", "high"];
+
+    // ---- helpers ----
+    const pad = (n) => String(n).padStart(2, "0");
+    const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    function addDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return keyOf(d); }
+    function startToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+    function relDue(due) {
+      if (!due) return null;
+      const [y, m, dd] = due.split("-").map(Number);
+      const d = new Date(y, m - 1, dd);
+      const days = Math.round((d - startToday()) / 86400000);
+      if (days < 0) return { text: `${-days}d overdue`, tone: "overdue" };
+      if (days === 0) return { text: "Today", tone: "soon" };
+      if (days === 1) return { text: "Tomorrow", tone: "soon" };
+      if (days < 7) return { text: d.toLocaleDateString(undefined, { weekday: "short" }), tone: "" };
+      return { text: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }), tone: "" };
+    }
+    let idc = 1;
+    const uid = () => "c" + idc++;
+
+    // ---- sample data ----
+    let cards = [
+      { id: uid(), status: "todo", title: "Redesign onboarding flow", priority: "high", labels: ["Design"], due: addDays(0), description: "Cut the steps from 5 to 3.", checklist: [{ t: "Audit current steps", done: true }, { t: "Sketch new flow", done: false }, { t: "Prototype", done: false }] },
+      { id: uid(), status: "todo", title: "Fix login redirect bug", priority: "high", labels: ["Bug", "Urgent"], due: addDays(-2), description: "Users bounce to / after magic link.", checklist: [] },
+      { id: uid(), status: "todo", title: "Research competitor pricing", priority: "low", labels: ["Research"], due: addDays(5), description: "", checklist: [] },
+      { id: uid(), status: "doing", title: "Write API docs", priority: "medium", labels: ["Chore"], due: addDays(1), description: "Cover auth + tasks endpoints.", checklist: [{ t: "Auth", done: true }, { t: "Tasks", done: true }, { t: "Boards", done: false }, { t: "Examples", done: false }] },
+      { id: uid(), status: "doing", title: "Migrate database to v2", priority: "high", labels: ["Bug"], due: null, description: "", checklist: [] },
+      { id: uid(), status: "done", title: "Set up CI pipeline", priority: "medium", labels: ["Chore"], due: addDays(-4), description: "", checklist: [], completed: true },
+    ];
+
+    let selectedId = cards[0].id;
+    let openId = null;
+    let search = "";
+
+    const board = document.getElementById("board");
+    const overlay = document.getElementById("overlay");
+    const panel = document.getElementById("panel");
+    const searchEl = document.getElementById("search");
+    const toastEl = document.getElementById("toast");
+
+    const get = (id) => cards.find((c) => c.id === id);
+    const matches = (c) => !search || (c.title + " " + (c.labels || []).join(" ")).toLowerCase().includes(search.toLowerCase());
+    const visible = (status) => cards.filter((c) => c.status === status && matches(c));
+
+    let toastTimer;
+    function toast(msg) {
+      toastEl.textContent = msg; toastEl.classList.add("show");
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1400);
+    }
+
+    // ---- FLIP animation ----
+    function snapshot() {
+      const m = new Map();
+      board.querySelectorAll(".card").forEach((el) => m.set(el.dataset.id, el.getBoundingClientRect()));
+      return m;
+    }
+    function flip(before) {
+      board.querySelectorAll(".card").forEach((el) => {
+        const old = before.get(el.dataset.id);
+        const now = el.getBoundingClientRect();
+        if (old) {
+          const dx = old.left - now.left, dy = old.top - now.top;
+          if (dx || dy) {
+            el.style.transition = "none";
+            el.style.transform = `translate(${dx}px,${dy}px)`;
+            requestAnimationFrame(() => { el.style.transition = "transform .28s cubic-bezier(.2,.8,.2,1)"; el.style.transform = ""; });
+          }
+        } else {
+          el.style.opacity = "0"; el.style.transform = "scale(.96)";
+          requestAnimationFrame(() => { el.style.transition = "opacity .2s, transform .2s"; el.style.opacity = ""; el.style.transform = ""; });
+        }
+      });
+    }
+
+    // ---- render ----
+    function render() {
+      const before = snapshot();
+      board.innerHTML = "";
+      COLUMNS.forEach((col) => {
+        const items = visible(col.key);
+        const section = document.createElement("section");
+        section.className = "column"; section.dataset.col = col.key;
+        section.innerHTML = `<div class="col-head"><span class="dot"></span><h2>${col.label}</h2><span class="count">${items.length}</span></div><div class="card-list"></div>`;
+        const list = section.querySelector(".card-list");
+        items.forEach((c) => list.appendChild(cardEl(c)));
+        const add = document.createElement("button");
+        add.className = "add"; add.textContent = "+ Add task";
+        add.addEventListener("click", () => newCard(col.key));
+        section.appendChild(add);
+        board.appendChild(section);
+      });
+      flip(before);
+    }
+
+    function cardEl(c) {
+      const el = document.createElement("article");
+      el.className = "card" + (c.priority ? " p-" + c.priority : "") + (c.completed ? " completed" : "") + (c.id === selectedId ? " sel" : "");
+      el.dataset.id = c.id;
+
+      const top = document.createElement("div"); top.className = "c-top";
+      const check = document.createElement("button");
+      check.className = "check" + (c.completed ? " on" : "");
+      check.title = "Mark complete"; check.textContent = c.completed ? "✓" : "";
+      check.addEventListener("click", (e) => { e.stopPropagation(); toggleComplete(c.id); });
+      const title = document.createElement("div"); title.className = "c-title"; title.textContent = c.title || "Untitled";
+      top.append(check, title);
+      el.appendChild(top);
+
+      const meta = document.createElement("div"); meta.className = "c-meta";
+      const rd = relDue(c.due);
+      if (rd) { const d = document.createElement("span"); d.className = "chip due " + rd.tone; d.textContent = "📅 " + rd.text; meta.appendChild(d); }
+      if (c.priority) { const p = document.createElement("span"); p.className = "chip pill-prio " + c.priority; p.textContent = c.priority[0].toUpperCase() + c.priority.slice(1); meta.appendChild(p); }
+      (c.labels || []).forEach((name) => { const l = document.createElement("span"); l.className = "chip label-chip"; l.style.background = LABELS[name] || "#888"; l.textContent = name; meta.appendChild(l); });
+      const cl = c.checklist || [];
+      if (cl.length) {
+        const done = cl.filter((i) => i.done).length, pct = Math.round((done / cl.length) * 100);
+        const pr = document.createElement("span"); pr.className = "prog" + (done === cl.length ? " done" : "");
+        pr.innerHTML = `<span class="track"><span class="fill" style="width:${pct}%"></span></span>${done}/${cl.length}`;
+        meta.appendChild(pr);
+      }
+      el.appendChild(meta);
+
+      el.addEventListener("click", () => { selectedId = c.id; openCard(c.id); });
+      return el;
+    }
+
+    // ---- actions ----
+    function toggleComplete(id) {
+      const c = get(id); if (!c) return;
+      const before = snapshot();
+      c.completed = !c.completed;
+      c.status = c.completed ? "done" : "todo";
+      render();
+      toast(c.completed ? "Completed ✓" : "Reopened");
+    }
+    function newCard(status) {
+      const c = { id: uid(), status: status || "todo", title: "", priority: null, labels: [], due: null, description: "", checklist: [] };
+      cards.unshift(c); selectedId = c.id; render(); openCard(c.id);
+      setTimeout(() => { const t = panel.querySelector(".ptitle"); if (t) t.focus(); }, 260);
+    }
+    function deleteCard(id) {
+      const el = board.querySelector(`.card[data-id="${id}"]`);
+      const fin = () => { cards = cards.filter((c) => c.id !== id); if (selectedId === id) selectedId = (cards[0] || {}).id || null; if (openId === id) closePanel(); render(); };
+      if (el) { el.classList.add("removing"); setTimeout(fin, 180); } else fin();
+      toast("Deleted");
+    }
+
+    // ---- detail panel ----
+    function openCard(id) {
+      openId = id; renderPanel(); overlay.classList.add("show"); panel.classList.add("show"); panel.setAttribute("aria-hidden", "false");
+    }
+    function closePanel() { openId = null; overlay.classList.remove("show"); panel.classList.remove("show"); panel.setAttribute("aria-hidden", "true"); }
+
+    function renderPanel() {
+      const c = get(openId); if (!c) return;
+      panel.innerHTML = "";
+      const x = document.createElement("button"); x.className = "x"; x.innerHTML = "×"; x.title = "Close (Esc)"; x.addEventListener("click", closePanel); panel.appendChild(x);
+
+      const title = document.createElement("input"); title.className = "ptitle"; title.value = c.title; title.placeholder = "Task name";
+      title.addEventListener("input", () => { c.title = title.value; renderBoardOnly(); });
+      panel.appendChild(title);
+
+      // properties
+      const props = document.createElement("div"); props.className = "field";
+      props.innerHTML = `<label>Priority</label>`;
+      const sel = document.createElement("select");
+      PRIORITIES.forEach((p) => { const o = document.createElement("option"); o.value = p; o.textContent = p ? p[0].toUpperCase() + p.slice(1) : "None"; if ((c.priority || "") === p) o.selected = true; sel.appendChild(o); });
+      sel.addEventListener("change", () => { c.priority = sel.value || null; renderBoardOnly(); });
+      props.appendChild(sel);
+      panel.appendChild(props);
+
+      const dueF = document.createElement("div"); dueF.className = "field";
+      const rd = relDue(c.due);
+      dueF.innerHTML = `<label>Due ${rd ? "· " + rd.text : ""}</label>`;
+      const due = document.createElement("input"); due.type = "date"; due.value = c.due || "";
+      due.addEventListener("change", () => { c.due = due.value || null; renderBoardOnly(); renderPanel(); });
+      dueF.appendChild(due);
+      panel.appendChild(dueF);
+
+      const labF = document.createElement("div"); labF.className = "field";
+      labF.innerHTML = `<label>Labels</label>`;
+      const wrap = document.createElement("div"); wrap.className = "lab-labels";
+      Object.keys(LABELS).forEach((name) => {
+        const on = c.labels.includes(name);
+        const chip = document.createElement("span"); chip.className = "chip label-chip" + (on ? "" : " add-label");
+        if (on) chip.style.background = LABELS[name];
+        chip.textContent = (on ? "" : "+ ") + name;
+        chip.addEventListener("click", () => { c.labels = on ? c.labels.filter((l) => l !== name) : [...c.labels, name]; renderBoardOnly(); renderPanel(); });
+        wrap.appendChild(chip);
+      });
+      labF.appendChild(wrap); panel.appendChild(labF);
+
+      const descF = document.createElement("div"); descF.className = "field";
+      descF.innerHTML = `<label>Description</label>`;
+      const ta = document.createElement("textarea"); ta.value = c.description || ""; ta.placeholder = "Add a description…";
+      ta.addEventListener("input", () => { c.description = ta.value; });
+      descF.appendChild(ta); panel.appendChild(descF);
+
+      // checklist
+      const clF = document.createElement("div"); clF.className = "field";
+      clF.innerHTML = `<label>Checklist</label>`;
+      const ul = document.createElement("ul"); ul.className = "pchecklist";
+      (c.checklist || []).forEach((it, i) => {
+        const li = document.createElement("li"); if (it.done) li.className = "done";
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = it.done;
+        cb.addEventListener("change", () => { it.done = cb.checked; renderBoardOnly(); renderPanel(); });
+        const t = document.createElement("span"); t.className = "t"; t.textContent = it.t;
+        const del = document.createElement("button"); del.className = "del"; del.textContent = "×";
+        del.addEventListener("click", () => { c.checklist.splice(i, 1); renderBoardOnly(); renderPanel(); });
+        li.append(cb, t, del); ul.appendChild(li);
+      });
+      clF.appendChild(ul);
+      const addStep = document.createElement("input"); addStep.className = "add-step"; addStep.placeholder = "+ Add a step…";
+      addStep.addEventListener("keydown", (e) => { if (e.key === "Enter" && addStep.value.trim()) { c.checklist.push({ t: addStep.value.trim(), done: false }); renderBoardOnly(); renderPanel(); panel.querySelector(".add-step").focus(); } });
+      clF.appendChild(addStep); panel.appendChild(clF);
+
+      const hint = document.createElement("div"); hint.className = "hintbar";
+      hint.textContent = "Edits here update the card live. Press Esc to close. (Nothing is saved — this is a demo.)";
+      panel.appendChild(hint);
+    }
+
+    // re-render board without disturbing the panel inputs (no FLIP needed mid-typing)
+    function renderBoardOnly() {
+      const sb = search; // keep search
+      const before = snapshot();
+      board.innerHTML = "";
+      COLUMNS.forEach((col) => {
+        const items = visible(col.key);
+        const section = document.createElement("section");
+        section.className = "column"; section.dataset.col = col.key;
+        section.innerHTML = `<div class="col-head"><span class="dot"></span><h2>${col.label}</h2><span class="count">${items.length}</span></div><div class="card-list"></div>`;
+        const list = section.querySelector(".card-list");
+        items.forEach((c) => list.appendChild(cardEl(c)));
+        const add = document.createElement("button"); add.className = "add"; add.textContent = "+ Add task";
+        add.addEventListener("click", () => newCard(col.key)); section.appendChild(add);
+        board.appendChild(section);
+      });
+      flip(before);
+    }
+
+    // ---- selection + keyboard ----
+    function selectMove(dx, dy) {
+      const cols = COLUMNS.map((c) => visible(c.key));
+      let ci = -1, ri = -1;
+      cols.forEach((arr, c) => { const r = arr.findIndex((x) => x.id === selectedId); if (r !== -1) { ci = c; ri = r; } });
+      if (ci === -1) { const first = cols.find((a) => a.length); if (first) selectedId = first[0].id; render(); return; }
+      if (dy) ri = Math.max(0, Math.min(cols[ci].length - 1, ri + dy));
+      if (dx) { let nc = ci; do { nc += dx; } while (nc >= 0 && nc < cols.length && cols[nc].length === 0); if (nc >= 0 && nc < cols.length && cols[nc].length) { ci = nc; ri = Math.min(ri, cols[ci].length - 1); } }
+      const target = cols[ci][ri]; if (target) { selectedId = target.id; render(); board.querySelector(`.card[data-id="${selectedId}"]`)?.scrollIntoView({ block: "nearest" }); }
+    }
+
+    document.addEventListener("keydown", (e) => {
+      const typing = e.target.matches("input, textarea, select");
+      if (e.key === "Escape") { if (openId) { e.target.blur && e.target.blur(); closePanel(); } else if (search) { search = ""; searchEl.value = ""; render(); } else if (typing) e.target.blur(); return; }
+      if (typing) return;
+      if (e.key === "/") { e.preventDefault(); searchEl.focus(); return; }
+      if (e.key.toLowerCase() === "n") { e.preventDefault(); newCard("todo"); return; }
+      if (openId) return; // panel open: let other keys be
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+        if (e.key === "ArrowUp") selectMove(0, -1);
+        if (e.key === "ArrowDown") selectMove(0, 1);
+        if (e.key === "ArrowLeft") selectMove(-1, 0);
+        if (e.key === "ArrowRight") selectMove(1, 0);
+        return;
+      }
+      if (e.key === "Enter" && selectedId) { e.preventDefault(); openCard(selectedId); return; }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) { e.preventDefault(); deleteCard(selectedId); return; }
+      if (e.key.toLowerCase() === "c" && selectedId) { e.preventDefault(); toggleComplete(selectedId); return; }
+    });
+
+    overlay.addEventListener("click", closePanel);
+    searchEl.addEventListener("input", () => { search = searchEl.value; render(); });
+
+    render();
+  })();
+  </script>
+</body>
+</html>
