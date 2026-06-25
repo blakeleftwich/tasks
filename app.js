@@ -199,8 +199,12 @@ function addTask(status) {
   selectedCardId = task.id;
   persist([task]);
   render();
+  // A brand-new task opens ready to name — make the title editable + focused.
   const el = document.querySelector(`[data-id="${task.id}"] .card-title`);
-  if (el) el.focus();
+  if (el) {
+    el.removeAttribute("readonly");
+    el.focus();
+  }
 }
 
 function updateTask(id, fields) {
@@ -386,11 +390,18 @@ function renderCard(task) {
     advanceTask(task.id);
   });
 
-  // Title — read-only until the card is expanded; click the card to edit.
+  // Title stays read-only by default. Clicking a collapsed card just expands it
+  // (the title is NOT focused). Clicking the name on an already-open card begins
+  // editing it.
   const title = node.querySelector(".card-title");
   const notes = node.querySelector(".card-notes");
   title.value = task.title;
-  if (expanded) title.removeAttribute("readonly");
+  title.addEventListener("mousedown", (e) => {
+    if (!title.hasAttribute("readonly")) return; // already editing
+    if (expandedCardId === task.id) title.removeAttribute("readonly"); // open → start editing here
+    else e.preventDefault(); // collapsed → expand only, don't focus the name
+  });
+  title.addEventListener("blur", () => title.setAttribute("readonly", ""));
   title.addEventListener("input", () => saveLocal());
   title.addEventListener("change", () => updateTask(task.id, { title: title.value }));
 
@@ -464,12 +475,10 @@ function renderCard(task) {
 function setCardExpanded(node, open) {
   if (!node) return;
   node.classList.toggle("expanded", open);
-  const title = node.querySelector(".card-title");
   if (open) {
-    title.removeAttribute("readonly");
     autoGrow(node.querySelector(".card-notes"));
   } else {
-    title.setAttribute("readonly", "");
+    node.querySelector(".card-title").setAttribute("readonly", ""); // reset edit state
   }
 }
 
