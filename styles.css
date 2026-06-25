@@ -139,6 +139,15 @@ html, body {
 }
 
 .board-menu-item {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.board-menu-item:hover { background: #eef2fb; }
+
+.board-menu-pick {
+  flex: 1;
+  min-width: 0;
   text-align: left;
   border: none;
   background: transparent;
@@ -148,9 +157,47 @@ html, body {
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.board-menu-item:hover { background: #eef2fb; }
-.board-menu-item.current { font-weight: 600; color: var(--todo); }
+.board-menu-item.current .board-menu-pick { font-weight: 600; color: var(--todo); }
+
+.board-menu-action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px 8px;
+  margin-right: 2px;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.board-menu-item:hover .board-menu-action { opacity: 1; }
+.board-menu-action:focus { opacity: 1; }
+.board-menu-action.delete:hover { background: #fde8e8; color: #ef4444; }
+.board-menu-action.leave:hover { background: #eef2fb; color: var(--text); }
+
+.board-menu-divider { height: 1px; background: var(--border); margin: 6px 4px; }
+
+.board-menu-new {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--todo);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.board-menu-new:hover { background: #eef2fb; }
 
 .header-right {
   display: flex;

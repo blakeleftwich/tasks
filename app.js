@@ -1130,12 +1130,6 @@ function renderBoardControls() {
   });
   wrap.appendChild(switchBtn);
 
-  const newBtn = document.createElement("button");
-  newBtn.className = "ghost-btn";
-  newBtn.textContent = "+ New board";
-  newBtn.addEventListener("click", createBoard);
-  wrap.appendChild(newBtn);
-
   const shareBtn = document.createElement("button");
   shareBtn.className = "ghost-btn";
   shareBtn.textContent = "🔗 Share";
@@ -1143,7 +1137,10 @@ function renderBoardControls() {
   shareBtn.addEventListener("click", () => shareBoard(shareBtn));
   wrap.appendChild(shareBtn);
 
-  // Switch dropdown (hidden until the arrow is clicked).
+  // Switch dropdown: pick a board, hover for a delete/leave action, "+ New" at the bottom.
+  const TRASH = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+  const EXIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
+
   const menu = document.createElement("div");
   menu.className = "board-menu";
   menu.id = "board-menu";
@@ -1152,16 +1149,98 @@ function renderBoardControls() {
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .forEach((b) => {
-      const item = document.createElement("button");
+      const item = document.createElement("div");
       item.className = "board-menu-item" + (b.id === currentBoardId ? " current" : "");
-      item.textContent = b.name + (b.owner_id === user.id ? "" : " (shared)");
-      item.addEventListener("click", () => {
+
+      const pick = document.createElement("button");
+      pick.className = "board-menu-pick";
+      pick.textContent = b.name + (b.owner_id === user.id ? "" : " (shared)");
+      pick.addEventListener("click", () => {
         menu.hidden = true;
         switchBoard(b.id);
       });
+      item.appendChild(pick);
+
+      // Last remaining board can't be removed.
+      if (boards.length > 1) {
+        const isOwner = b.owner_id === user.id;
+        const action = document.createElement("button");
+        action.className = "board-menu-action " + (isOwner ? "delete" : "leave");
+        action.title = isOwner ? "Delete board" : "Leave board";
+        action.innerHTML = isOwner ? TRASH : EXIT;
+        action.addEventListener("click", (e) => {
+          e.stopPropagation();
+          menu.hidden = true;
+          if (isOwner) deleteBoard(b);
+          else leaveBoard(b);
+        });
+        item.appendChild(action);
+      }
       menu.appendChild(item);
     });
+
+  const divider = document.createElement("div");
+  divider.className = "board-menu-divider";
+  menu.appendChild(divider);
+
+  const addRow = document.createElement("button");
+  addRow.className = "board-menu-new";
+  addRow.textContent = "+ New board";
+  addRow.addEventListener("click", () => {
+    menu.hidden = true;
+    createBoard();
+  });
+  menu.appendChild(addRow);
+
   wrap.appendChild(menu);
+}
+
+async function deleteBoard(board) {
+  const ok = await confirmModal({
+    title: "Delete board?",
+    message: `“${board.name}” and all its tasks will be permanently deleted for everyone on it.`,
+    confirmLabel: "Delete board",
+  });
+  if (!ok) return;
+  const { error } = await supa.from("boards").delete().eq("id", board.id);
+  if (error) {
+    console.error("Delete board failed:", error.message);
+    return;
+  }
+  removeBoardLocally(board.id);
+}
+
+async function leaveBoard(board) {
+  const ok = await confirmModal({
+    title: "Leave board?",
+    message: `You'll be removed from “${board.name}”. Its tasks stay for everyone else.`,
+    confirmLabel: "Leave board",
+  });
+  if (!ok) return;
+  const { error } = await supa.from("board_members").delete().eq("board_id", board.id).eq("user_id", user.id);
+  if (error) {
+    console.error("Leave board failed:", error.message);
+    return;
+  }
+  removeBoardLocally(board.id);
+}
+
+function removeBoardLocally(id) {
+  boards = boards.filter((b) => b.id !== id);
+  if (currentBoardId !== id) {
+    renderBoardControls();
+    return;
+  }
+  const fallback = boards.find((b) => b.owner_id === user.id) || boards[0];
+  currentBoardId = fallback ? fallback.id : null;
+  localStorage.setItem("currentBoardId", currentBoardId || "");
+  renderBoardControls();
+  if (currentBoardId) {
+    pullRemote(false).then(render);
+  } else {
+    tasks = [];
+    render();
+  }
 }
 
 // Inline-rename the current board. The board id never changes, so share links
