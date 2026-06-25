@@ -686,15 +686,35 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
 }
 .checklist-input:focus { outline: none; border-color: var(--todo); }
 
-/* Menu fields (priority / due / colour) inside the expanded card */
+/* "More" toggle + collapsible menu fields (priority / due / colour) */
+.props-toggle {
+  display: block;
+  margin: 8px 0 0 auto; /* spacing + push to the corner */
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.props-toggle:hover { background: #eef2fb; color: var(--text); }
+
+.card-props-wrap {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.22s ease;
+}
+.card.props-open .card-props-wrap { max-height: 320px; }
+
 .card-props {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
   gap: 8px 10px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding-top: 8px;
 }
 .card-menu-label {
   font-size: 0.7rem;

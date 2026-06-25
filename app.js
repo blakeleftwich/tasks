@@ -28,6 +28,7 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 let tasks = []; // flat array of task objects
 let selectedDate = todayKey();
 let expandedCardId = null; // the card expanded in place (view state, not persisted)
+let propsOpenForId = null; // card whose priority/due/colour options are revealed
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
 let searchQuery = ""; // lowercased search filter
 
@@ -449,6 +450,21 @@ function renderCard(task) {
   dueInput.addEventListener("change", () => updateAndRender(task.id, { due: dueInput.value || null }));
   renderSwatches(node.querySelector(".label-swatches"), task);
 
+  // "More" toggle: the priority/due/colour options start collapsed.
+  const propsToggle = node.querySelector(".props-toggle");
+  const propsOpen = propsOpenForId === task.id;
+  node.classList.toggle("props-open", propsOpen);
+  propsToggle.textContent = propsOpen ? "Less ▴" : "More ▾";
+  propsToggle.setAttribute("aria-expanded", String(propsOpen));
+  propsToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !node.classList.contains("props-open");
+    node.classList.toggle("props-open", open);
+    propsOpenForId = open ? task.id : null;
+    propsToggle.textContent = open ? "Less ▴" : "More ▾";
+    propsToggle.setAttribute("aria-expanded", String(open));
+  });
+
   // Delete.
   node.querySelector(".delete-btn").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -490,6 +506,7 @@ function expandCard(id) {
   if (!node) return;
   expandedCardId = id;
   selectedCardId = id;
+  propsOpenForId = null; // options start collapsed each time a card opens
   setCardExpanded(node, true);
 }
 
