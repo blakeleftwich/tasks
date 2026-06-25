@@ -31,6 +31,7 @@
   </header>
 
   <div class="toolbar">
+    <input id="search" class="search-input" type="text" placeholder="Search tasks…  ( / )" aria-label="Search tasks" />
     <button id="carry-over" class="ghost-btn carry-btn" hidden></button>
   </div>
 
@@ -39,7 +40,15 @@
   </main>
 
   <footer class="app-footer">
-    <span id="storage-note">Saved automatically in this browser.</span>
+    <div class="shortcuts">
+      <span><kbd>N</kbd> New</span>
+      <span><kbd>↵</kbd> Open</span>
+      <span><kbd>← ↑ ↓ →</kbd> Move</span>
+      <span><kbd>C</kbd> Complete</span>
+      <span><kbd>Del</kbd> Delete</span>
+      <span><kbd>/</kbd> Search</span>
+      <span><kbd>Esc</kbd> Close</span>
+    </div>
   </footer>
 
   <!-- Confirmation modal -->
@@ -58,37 +67,40 @@
   <template id="card-template">
     <article class="card">
       <div class="card-top">
-        <span class="priority-dot" hidden></span>
-        <input class="card-title" type="text" placeholder="Task name" />
-        <button class="props-btn" type="button" title="Options" aria-label="Options">⋯</button>
-        <button class="menu-btn" type="button" title="Expand" aria-label="Expand" aria-expanded="false">▾</button>
-        <button class="delete-btn" title="Delete task" aria-label="Delete task">×</button>
+        <button class="check" type="button" aria-label="Advance to next column"></button>
+        <input class="card-title" type="text" placeholder="Task name" readonly />
+        <button class="delete-btn" type="button" title="Delete task" aria-label="Delete task">×</button>
       </div>
 
       <div class="card-meta">
         <span class="due-badge" hidden></span>
+        <span class="priority-pill" hidden></span>
         <span class="progress-chip" hidden></span>
       </div>
 
-      <textarea class="card-notes" placeholder="Add a description…" rows="1"></textarea>
+      <div class="card-body">
+        <div class="card-body-inner">
+          <textarea class="card-notes" placeholder="Add a description…" rows="1"></textarea>
 
-      <div class="card-checklist">
-        <ul class="checklist-items"></ul>
-        <input class="checklist-input" type="text" placeholder="+ Add a step…" aria-label="Add a step" />
-      </div>
+          <div class="card-checklist">
+            <ul class="checklist-items"></ul>
+            <input class="checklist-input" type="text" placeholder="+ Add a step…" aria-label="Add a step" />
+          </div>
 
-      <div class="card-menu" hidden>
-        <label class="card-menu-label">Priority</label>
-        <select class="priority-select" title="Priority" aria-label="Priority">
-          <option value="">None</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <label class="card-menu-label">Due date</label>
-        <input class="due-input" type="date" title="Due date" aria-label="Due date" />
-        <label class="card-menu-label">Label</label>
-        <div class="label-swatches" role="group" aria-label="Color label"></div>
+          <div class="card-props">
+            <label class="card-menu-label">Priority</label>
+            <select class="priority-select" aria-label="Priority">
+              <option value="">None</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <label class="card-menu-label">Due date</label>
+            <input class="due-input" type="date" aria-label="Due date" />
+            <label class="card-menu-label">Color</label>
+            <div class="label-swatches" role="group" aria-label="Card color"></div>
+          </div>
+        </div>
       </div>
     </article>
   </template>

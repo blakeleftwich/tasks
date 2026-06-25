@@ -27,8 +27,9 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 /* ---------- State ---------- */
 let tasks = []; // flat array of task objects
 let selectedDate = todayKey();
-const expandedIds = new Set(); // cards expanded via the menu button (view state, not persisted)
-let openMenuCardId = null; // card whose ⋯ properties popover is open
+let expandedCardId = null; // the card expanded in place (view state, not persisted)
+let selectedCardId = null; // keyboard-selected card (for shortcuts)
+let searchQuery = ""; // lowercased search filter
 
 let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
@@ -194,6 +195,8 @@ function reindex(day, status) {
 function addTask(status) {
   const task = normalizeTask({ day: selectedDate, status, position: group(selectedDate, status).length });
   tasks.push(task);
+  expandedCardId = task.id; // open the new card so its title is editable
+  selectedCardId = task.id;
   persist([task]);
   render();
   const el = document.querySelector(`[data-id="${task.id}"] .card-title`);
@@ -212,11 +215,32 @@ function deleteTask(id) {
   if (idx === -1) return;
   const { day, status } = tasks[idx];
   tasks.splice(idx, 1);
+  if (expandedCardId === id) expandedCardId = null;
   const changed = reindex(day, status);
   saveLocal();
   remoteDelete(id);
   if (changed.length) persist(changed);
   render();
+}
+
+async function requestDeleteTask(id) {
+  const task = getTask(id);
+  if (!task) return;
+  const name = task.title.trim();
+  const ok = await confirmModal({
+    message: name ? `“${name}” will be permanently deleted.` : "This task will be permanently deleted.",
+    confirmLabel: "Delete",
+  });
+  if (ok) deleteTask(id);
+}
+
+// Check circle: advance to the next column; Done loops back to In Progress.
+function advanceTask(id) {
+  const task = getTask(id);
+  if (!task) return;
+  const order = ["todo", "inProgress", "done"];
+  const next = task.status === "done" ? "inProgress" : order[order.indexOf(task.status) + 1];
+  if (next && next !== task.status) moveTaskTo(id, next);
 }
 
 // Move a task into a column, optionally before a specific card.
@@ -282,7 +306,7 @@ function render() {
 
   board.innerHTML = "";
   COLUMNS.forEach((col) => {
-    const items = group(selectedDate, col.key);
+    const items = group(selectedDate, col.key).filter(matchesSearch);
 
     const column = document.createElement("section");
     column.className = "column";
@@ -307,7 +331,10 @@ function render() {
       items.forEach((task) => list.appendChild(renderCard(task)));
     }
 
-    column.querySelector(".add-btn").addEventListener("click", () => addTask(col.key));
+    column.querySelector(".add-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      addTask(col.key);
+    });
     board.appendChild(column);
   });
 
@@ -327,54 +354,51 @@ function renderCarryOver() {
   }
 }
 
-function setMenuState(btn, expanded) {
-  btn.textContent = expanded ? "▴" : "▾";
-  btn.setAttribute("aria-expanded", String(expanded));
-  const label = expanded ? "Collapse" : "Expand";
-  btn.setAttribute("aria-label", label);
-  btn.title = label;
-}
-
 function renderCard(task) {
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.id = task.id;
-  if (expandedIds.has(task.id)) node.classList.add("expanded");
+  const expanded = expandedCardId === task.id;
+  if (expanded) node.classList.add("expanded");
+  if (task.id === selectedCardId) node.classList.add("selected");
+  if (task.status === "done") node.classList.add("done-card");
 
-  // Label colour as the left border.
-  const labelDef = LABELS.find((l) => l.key === task.label);
-  node.style.borderLeftColor = labelDef ? labelDef.color : "var(--border)";
+  // Left edge = the colour you pick.
+  const colorDef = LABELS.find((l) => l.key === task.label);
+  node.style.borderLeftColor = colorDef ? colorDef.color : "var(--border)";
 
-  // Priority dot.
-  const dot = node.querySelector(".priority-dot");
-  if (task.priority) {
-    dot.hidden = false;
-    dot.classList.add(task.priority);
-    dot.title = task.priority[0].toUpperCase() + task.priority.slice(1) + " priority";
+  // Check circle — advances to the next column (Done → back to In Progress).
+  const check = node.querySelector(".check");
+  if (task.status === "done") {
+    check.classList.add("on");
+    check.textContent = "✓";
   }
+  check.title = task.status === "done" ? "Move back to In Progress" : "Move to next column";
+  check.addEventListener("click", (e) => {
+    e.stopPropagation();
+    advanceTask(task.id);
+  });
 
-  // Title + notes.
+  // Title — read-only until the card is expanded; click the card to edit.
   const title = node.querySelector(".card-title");
   const notes = node.querySelector(".card-notes");
   title.value = task.title;
-  notes.value = task.notes;
-  autoGrow(notes);
-  // Persist text on change (not every keystroke) to limit sync churn.
+  if (expanded) title.removeAttribute("readonly");
   title.addEventListener("input", () => saveLocal());
   title.addEventListener("change", () => updateTask(task.id, { title: title.value }));
-  notes.addEventListener("input", () => {
-    autoGrow(notes);
-    saveLocal();
-  });
-  notes.addEventListener("change", () => updateTask(task.id, { notes: notes.value }));
 
-  // Meta row (due badge + checklist progress) — shown if either has content.
+  // Meta: due / priority / checklist progress.
   const checklist = Array.isArray(task.checklist) ? task.checklist : [];
   const badge = node.querySelector(".due-badge");
-  node.querySelector(".card-meta").hidden = !task.due && checklist.length === 0;
   if (task.due) {
     badge.hidden = false;
     badge.textContent = "📅 " + formatShort(task.due);
     if (isOverdue(task)) badge.classList.add("overdue");
+  }
+  const pill = node.querySelector(".priority-pill");
+  if (task.priority) {
+    pill.hidden = false;
+    pill.textContent = task.priority[0].toUpperCase() + task.priority.slice(1);
+    pill.classList.add(task.priority);
   }
   const chip = node.querySelector(".progress-chip");
   if (checklist.length) {
@@ -384,63 +408,46 @@ function renderCard(task) {
     if (done === checklist.length) chip.classList.add("complete");
     chip.innerHTML = `<span class="progress-track"><span class="progress-fill" style="width:${pct}%"></span></span><span class="progress-count">${done}/${checklist.length}</span>`;
   }
+  node.querySelector(".card-meta").hidden = !task.due && !task.priority && checklist.length === 0;
 
-  // Checklist editor.
+  // Description.
+  notes.value = task.notes;
+  notes.addEventListener("input", () => {
+    autoGrow(notes);
+    saveLocal();
+  });
+  notes.addEventListener("change", () => updateTask(task.id, { notes: notes.value }));
+
+  // Checklist.
   renderChecklist(node, task, checklist);
 
-  // Controls.
+  // Menu fields: priority, due date, colour (at the bottom).
   const prio = node.querySelector(".priority-select");
   prio.value = task.priority || "";
   prio.addEventListener("change", () => updateAndRender(task.id, { priority: prio.value || null }));
-
   const dueInput = node.querySelector(".due-input");
   dueInput.value = task.due || "";
   dueInput.addEventListener("change", () => updateAndRender(task.id, { due: dueInput.value || null }));
-
   renderSwatches(node.querySelector(".label-swatches"), task);
 
-  // Properties popover (⋯): priority / due date / label. Stays open across the
-  // re-render that a property change triggers.
-  const propsBtn = node.querySelector(".props-btn");
-  const cardMenu = node.querySelector(".card-menu");
-  cardMenu.hidden = openMenuCardId !== task.id;
-  propsBtn.addEventListener("click", (e) => {
+  // Delete.
+  node.querySelector(".delete-btn").addEventListener("click", (e) => {
     e.stopPropagation();
-    if (openMenuCardId === task.id) {
-      openMenuCardId = null;
-      cardMenu.hidden = true;
-    } else {
-      document.querySelectorAll(".card-menu").forEach((m) => (m.hidden = true));
-      openMenuCardId = task.id;
-      cardMenu.hidden = false;
-    }
+    requestDeleteTask(task.id);
   });
 
-  node.querySelector(".delete-btn").addEventListener("click", async () => {
-    const name = task.title.trim();
-    const ok = await confirmModal({
-      message: name ? `“${name}” will be permanently deleted.` : "This task will be permanently deleted.",
-      confirmLabel: "Delete",
-    });
-    if (ok) deleteTask(task.id);
-  });
-
-  // Up/down arrow toggles the card open/closed (description + options).
-  const menuBtn = node.querySelector(".menu-btn");
-  setMenuState(menuBtn, expandedIds.has(task.id));
-  menuBtn.addEventListener("click", (e) => {
+  // Click the card to expand it in place (a plain click, not a drag).
+  node.addEventListener("click", (e) => {
+    if (justDragged) return;
+    if (e.target.closest(".check, .delete-btn")) return;
+    if (expandedCardId === task.id) return; // already open — inner clicks edit
     e.stopPropagation();
-    const expanded = node.classList.toggle("expanded");
-    if (expanded) {
-      expandedIds.add(task.id);
-      autoGrow(notes);
-    } else {
-      expandedIds.delete(task.id);
-    }
-    setMenuState(menuBtn, expanded);
+    expandedCardId = task.id;
+    selectedCardId = task.id;
+    render();
   });
 
-  // Press-and-move anywhere on the card (incl. text fields) starts a drag.
+  // Drag (mouse) is always available.
   node.addEventListener("pointerdown", (e) => onCardPointerDown(e, node, task.id));
 
   return node;
@@ -461,7 +468,7 @@ function renderSwatches(container, task) {
   const none = document.createElement("button");
   none.className = "swatch none" + (!task.label ? " selected" : "");
   none.textContent = "✕";
-  none.title = "No label";
+  none.title = "No color";
   none.addEventListener("click", () => updateAndRender(task.id, { label: null }));
   container.appendChild(none);
 }
@@ -1135,11 +1142,120 @@ document.addEventListener("click", (e) => {
   if (menu && !menu.hidden && !e.target.closest("#board-menu")) menu.hidden = true;
 });
 
-// Close any open card properties popover when clicking outside it.
+// Click outside the expanded card to collapse it.
 document.addEventListener("click", (e) => {
-  if (openMenuCardId && !e.target.closest(".card-menu") && !e.target.closest(".props-btn")) {
-    openMenuCardId = null;
-    document.querySelectorAll(".card-menu").forEach((m) => (m.hidden = true));
+  if (!expandedCardId) return;
+  const card = e.target.closest(".card");
+  if (!card || card.dataset.id !== expandedCardId) {
+    expandedCardId = null;
+    render();
+  }
+});
+
+/* =====================================================================
+ * Search + keyboard shortcuts
+ * ===================================================================== */
+function matchesSearch(task) {
+  if (!searchQuery) return true;
+  return (task.title + " " + (task.notes || "")).toLowerCase().includes(searchQuery);
+}
+
+function visibleColumn(status) {
+  return group(selectedDate, status).filter(matchesSearch);
+}
+
+function moveSelection(dx, dy) {
+  const cols = COLUMN_KEYS.map(visibleColumn);
+  let ci = -1;
+  let ri = -1;
+  cols.forEach((arr, c) => {
+    const r = arr.findIndex((t) => t.id === selectedCardId);
+    if (r !== -1) {
+      ci = c;
+      ri = r;
+    }
+  });
+  if (ci === -1) {
+    const first = cols.findIndex((a) => a.length);
+    if (first !== -1) {
+      selectedCardId = cols[first][0].id;
+      render();
+    }
+    return;
+  }
+  if (dy) ri = Math.max(0, Math.min(cols[ci].length - 1, ri + dy));
+  if (dx) {
+    let nc = ci;
+    do {
+      nc += dx;
+    } while (nc >= 0 && nc < cols.length && cols[nc].length === 0);
+    if (nc >= 0 && nc < cols.length && cols[nc].length) {
+      ci = nc;
+      ri = Math.min(ri, cols[ci].length - 1);
+    }
+  }
+  const target = cols[ci][ri];
+  if (target) {
+    selectedCardId = target.id;
+    render();
+    document.querySelector(`[data-id="${selectedCardId}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+document.getElementById("search").addEventListener("input", (e) => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  render();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
+  const typing = !!(e.target.matches && e.target.matches("input, textarea, select"));
+
+  if (e.key === "Escape") {
+    if (expandedCardId) {
+      expandedCardId = null;
+      render();
+    } else if (searchQuery) {
+      searchQuery = "";
+      document.getElementById("search").value = "";
+      render();
+    } else if (typing) {
+      e.target.blur();
+    }
+    return;
+  }
+  if (typing) return;
+
+  if (e.key === "/") {
+    e.preventDefault();
+    document.getElementById("search").focus();
+    return;
+  }
+  if (e.key.toLowerCase() === "n") {
+    e.preventDefault();
+    addTask("todo");
+    return;
+  }
+  if (expandedCardId) return; // arrows/enter are for the board, not an open card
+
+  if (e.key === "ArrowUp") return e.preventDefault(), moveSelection(0, -1);
+  if (e.key === "ArrowDown") return e.preventDefault(), moveSelection(0, 1);
+  if (e.key === "ArrowLeft") return e.preventDefault(), moveSelection(-1, 0);
+  if (e.key === "ArrowRight") return e.preventDefault(), moveSelection(1, 0);
+  if (e.key === "Enter" && selectedCardId) {
+    e.preventDefault();
+    expandedCardId = selectedCardId;
+    render();
+    return;
+  }
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedCardId) {
+    e.preventDefault();
+    requestDeleteTask(selectedCardId);
+    return;
+  }
+  if (e.key.toLowerCase() === "c" && selectedCardId) {
+    e.preventDefault();
+    advanceTask(selectedCardId);
   }
 });
 
