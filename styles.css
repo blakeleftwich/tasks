@@ -371,11 +371,9 @@ html, body {
   border-radius: 10px;
   box-shadow: var(--shadow);
   padding: 10px 10px 8px;
-  cursor: grab;
+  cursor: pointer;
   transition: box-shadow 0.15s;
 }
-
-.card:active { cursor: grabbing; }
 
 /* The full card lifted under the cursor while dragging. */
 .drag-clone {
@@ -440,7 +438,8 @@ body.dragging-active .empty-hint { display: none; }
   min-width: 0;
 }
 .card-title[readonly] { cursor: pointer; }
-.card-title:not([readonly]):focus { outline: none; background: #f3f7ff; }
+.card-title:focus { outline: none; }
+.card-title:not([readonly]):focus { background: #f3f7ff; }
 
 .delete-btn {
   flex: none;
@@ -524,7 +523,8 @@ body.dragging-active .empty-hint { display: none; }
 .priority-pill.low { background: #eff6ff; color: #1d4ed8; }
 
 /* Card states */
-.card.selected { outline: 2px solid var(--todo); outline-offset: 1px; }
+/* Selection ring shows only while navigating with the keyboard. */
+body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px; }
 .card.done-card { opacity: 0.62; }
 .card.done-card .card-title { text-decoration: line-through; color: var(--muted); }
 
@@ -679,10 +679,18 @@ body.dragging-active .empty-hint { display: none; }
 
 /* ---------- Footer ---------- */
 .app-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
   text-align: center;
   color: var(--muted);
-  padding: 8px 16px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 8px 16px;
 }
+body { padding-bottom: 46px; }
 .shortcuts {
   display: flex;
   flex-wrap: wrap;
@@ -769,4 +777,8 @@ body.dragging-active .empty-hint { display: none; }
   .card-title { font-size: 0.78rem; }
   .check { width: 15px; height: 15px; }
   .card-meta { gap: 4px; }
+
+  /* Keyboard shortcuts are desktop-only; reclaim the space on touch. */
+  .app-footer { display: none; }
+  body { padding-bottom: 0; }
 }

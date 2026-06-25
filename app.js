@@ -1165,6 +1165,7 @@ function visibleColumn(status) {
 }
 
 function moveSelection(dx, dy) {
+  document.body.classList.add("kb-nav"); // reveal the selection ring
   const cols = COLUMN_KEYS.map(visibleColumn);
   let ci = -1;
   let ri = -1;
@@ -1206,6 +1207,9 @@ document.getElementById("search").addEventListener("input", (e) => {
   searchQuery = e.target.value.trim().toLowerCase();
   render();
 });
+
+// Using the mouse/touch hides the keyboard selection ring.
+document.addEventListener("pointerdown", () => document.body.classList.remove("kb-nav"));
 
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
