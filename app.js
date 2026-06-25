@@ -244,14 +244,6 @@ function moveTaskTo(id, toStatus, beforeId) {
   render();
 }
 
-function moveByButton(id, dir) {
-  const task = getTask(id);
-  if (!task) return;
-  const idx = COLUMN_KEYS.indexOf(task.status);
-  const next = COLUMN_KEYS[idx + dir];
-  if (next) moveTaskTo(id, next);
-}
-
 function carryOver() {
   const today = todayKey();
   const pending = tasks.filter((t) => t.day < today && (t.status === "todo" || t.status === "inProgress"));
@@ -278,12 +270,15 @@ const board = document.getElementById("board");
 const cardTemplate = document.getElementById("card-template");
 
 function render() {
+  const boardTitle = currentBoardName();
+  document.getElementById("app-title").textContent = boardTitle;
+  document.title = boardTitle === "Daily Task Board" ? boardTitle : `${boardTitle} · Daily Task Board`;
   document.getElementById("long-date").textContent = formatLong(selectedDate);
   document.getElementById("date-picker").value = selectedDate;
   renderCarryOver();
 
   board.innerHTML = "";
-  COLUMNS.forEach((col, colIndex) => {
+  COLUMNS.forEach((col) => {
     const items = group(selectedDate, col.key);
 
     const column = document.createElement("section");
@@ -306,7 +301,7 @@ function render() {
       hint.textContent = "No tasks";
       list.appendChild(hint);
     } else {
-      items.forEach((task) => list.appendChild(renderCard(task, colIndex)));
+      items.forEach((task) => list.appendChild(renderCard(task)));
     }
 
     column.querySelector(".add-btn").addEventListener("click", () => addTask(col.key));
@@ -337,7 +332,7 @@ function setMenuState(btn, expanded) {
   btn.title = label;
 }
 
-function renderCard(task, colIndex) {
+function renderCard(task) {
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.id = task.id;
   if (expandedIds.has(task.id)) node.classList.add("expanded");
@@ -388,13 +383,6 @@ function renderCard(task, colIndex) {
   dueInput.addEventListener("change", () => updateAndRender(task.id, { due: dueInput.value || null }));
 
   renderSwatches(node.querySelector(".label-swatches"), task);
-
-  const left = node.querySelector(".move-left");
-  const right = node.querySelector(".move-right");
-  left.disabled = colIndex === 0;
-  right.disabled = colIndex === COLUMNS.length - 1;
-  left.addEventListener("click", () => moveByButton(task.id, -1));
-  right.addEventListener("click", () => moveByButton(task.id, 1));
 
   node.querySelector(".delete-btn").addEventListener("click", async () => {
     const name = task.title.trim();
@@ -660,6 +648,14 @@ async function setUser(nextUser) {
 }
 
 /* ---------- Boards ---------- */
+function currentBoardName() {
+  if (user && currentBoardId) {
+    const b = boards.find((x) => x.id === currentBoardId);
+    if (b) return b.name;
+  }
+  return "Daily Task Board";
+}
+
 function isPersonalBoard(id) {
   const b = boards.find((x) => x.id === id);
   return !!(b && user && b.owner_id === user.id);

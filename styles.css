@@ -441,7 +441,7 @@ body.dragging-active .empty-hint { display: none; }
   color: var(--text);
 }
 
-.label-swatches { display: flex; gap: 4px; }
+.label-swatches { display: flex; gap: 4px; flex-wrap: wrap; }
 
 .swatch {
   width: 16px;
@@ -459,22 +459,6 @@ body.dragging-active .empty-hint { display: none; }
   font-size: 0.7rem;
   line-height: 1;
 }
-
-.move-group { display: flex; gap: 4px; margin-left: auto; }
-
-.move-btn {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  line-height: 1;
-  padding: 3px 8px;
-}
-
-.move-btn:hover { background: #eef2fb; color: var(--text); }
-.move-btn:disabled { opacity: 0.3; cursor: default; }
 
 /* ---------- Footer ---------- */
 .app-footer {

@@ -11,23 +11,23 @@
 <body>
   <header class="app-header">
     <div class="title-block">
-      <h1>Daily Task Board</h1>
+      <h1 id="app-title">Daily Task Board</h1>
       <p id="long-date" class="long-date"></p>
     </div>
 
     <div class="header-right">
-      <div id="auth-bar" class="auth-bar" hidden></div>
+      <div id="board-bar" class="board-bar" hidden></div>
       <div class="date-nav">
         <button id="prev-day" class="icon-btn" title="Previous day" aria-label="Previous day">◀</button>
         <input id="date-picker" type="date" class="date-picker" aria-label="Select date" />
         <button id="next-day" class="icon-btn" title="Next day" aria-label="Next day">▶</button>
         <button id="today-btn" class="ghost-btn">Today</button>
       </div>
+      <div id="auth-bar" class="auth-bar" hidden></div>
     </div>
   </header>
 
   <div class="toolbar">
-    <div id="board-bar" class="board-bar" hidden></div>
     <button id="carry-over" class="ghost-btn carry-btn" hidden></button>
   </div>
 
@@ -75,10 +75,6 @@
         </select>
         <input class="due-input" type="date" title="Due date" aria-label="Due date" />
         <div class="label-swatches" role="group" aria-label="Color label"></div>
-        <div class="move-group" role="group" aria-label="Move task">
-          <button class="move-btn move-left" title="Move left" aria-label="Move left">←</button>
-          <button class="move-btn move-right" title="Move right" aria-label="Move right">→</button>
-        </div>
       </div>
     </article>
   </template>
