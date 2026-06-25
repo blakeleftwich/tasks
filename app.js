@@ -700,6 +700,11 @@ const DRAG_THRESHOLD = 5; // px before a hold becomes a drag
 
 function onCardPointerDown(e, node, id) {
   if (e.button !== 0 || e.pointerType !== "mouse") return;
+  // If pressing inside a text field you've already focused (caret active), let it
+  // select/copy/paste — don't hijack it for a card drag. Dragging a field you
+  // haven't clicked into still drags the card.
+  const field = e.target.closest("textarea, input[type='text']");
+  if (field && document.activeElement === field && !field.readOnly) return;
   justDragged = false;
   const rect = node.getBoundingClientRect();
   drag = {
