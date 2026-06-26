@@ -285,6 +285,13 @@ html, body {
   min-height: 0;
 }
 
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .search-input {
   font: inherit;
   font-size: 0.9rem;
@@ -317,6 +324,13 @@ html, body {
   gap: 16px;
   padding: clamp(16px, 4vw, 40px);
   align-items: start;
+}
+
+/* Stacked view (toggle): one column, centred for readability. */
+.board.stacked {
+  grid-template-columns: 1fr;
+  max-width: 720px;
+  margin-inline: auto;
 }
 
 .column {

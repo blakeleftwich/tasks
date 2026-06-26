@@ -1398,6 +1398,21 @@ document.getElementById("search").addEventListener("input", (e) => {
 // Using the mouse/touch hides the keyboard selection ring.
 document.addEventListener("pointerdown", () => document.body.classList.remove("kb-nav"));
 
+// Stacked / side-by-side view toggle (a local view preference).
+let stackedView = localStorage.getItem("stackedView") === "1";
+function applyView() {
+  board.classList.toggle("stacked", stackedView);
+  const btn = document.getElementById("view-toggle");
+  btn.textContent = stackedView ? "▥ Columns" : "▤ Stack";
+  btn.title = stackedView ? "Switch to side-by-side columns" : "Switch to a stacked view";
+}
+document.getElementById("view-toggle").addEventListener("click", () => {
+  stackedView = !stackedView;
+  localStorage.setItem("stackedView", stackedView ? "1" : "0");
+  applyView();
+});
+applyView();
+
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
   const typing = !!(e.target.matches && e.target.matches("input, textarea, select"));
