@@ -856,6 +856,25 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
 }
 .tag-menu-item { display: flex; align-items: center; border-radius: 6px; }
 .tag-menu-item:hover { background: #eef2fb; }
+
+.tag-color-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  padding: 0;
+  margin: 0 2px 0 4px;
+}
+.tag-pill-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
 .tag-menu-pick {
   flex: 1;
   min-width: 0;

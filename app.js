@@ -444,9 +444,20 @@ function buildTagMenu(menu, task) {
   });
   menu.appendChild(none);
 
-  tags.forEach((tag) => {
+  tags.forEach((tag, i) => {
+    const color = tag.color || CATEGORY_COLORS[i % CATEGORY_COLORS.length];
     const row = document.createElement("div");
     row.className = "tag-menu-item";
+
+    const dot = document.createElement("button");
+    dot.className = "tag-color-dot";
+    dot.style.background = color;
+    dot.title = "Change colour";
+    dot.addEventListener("click", (e) => {
+      e.stopPropagation();
+      cycleTagColor(tag, dot);
+    });
+
     const pick = document.createElement("button");
     pick.className = "tag-menu-pick" + (task.tag === tag.key ? " current" : "");
     pick.textContent = tag.label;
@@ -470,7 +481,7 @@ function buildTagMenu(menu, task) {
       e.stopPropagation();
       deleteTag(task, tag);
     });
-    row.append(pick, ren, del);
+    row.append(dot, pick, ren, del);
     menu.appendChild(row);
   });
 
@@ -478,24 +489,47 @@ function buildTagMenu(menu, task) {
   divider.className = "tag-menu-divider";
   menu.appendChild(divider);
 
+  // New-tag row: pick a colour (click the dot to cycle), type a name, Enter.
+  const newRow = document.createElement("div");
+  newRow.className = "tag-menu-item";
+  let pendingColor = CATEGORY_COLORS[tags.length % CATEGORY_COLORS.length];
+  const newDot = document.createElement("button");
+  newDot.className = "tag-color-dot";
+  newDot.style.background = pendingColor;
+  newDot.title = "Pick colour";
+  newDot.addEventListener("click", (e) => {
+    e.stopPropagation();
+    pendingColor = CATEGORY_COLORS[(CATEGORY_COLORS.indexOf(pendingColor) + 1) % CATEGORY_COLORS.length];
+    newDot.style.background = pendingColor;
+  });
   const add = document.createElement("input");
   add.className = "tag-menu-new";
   add.placeholder = "+ New tag…";
   add.addEventListener("click", (e) => e.stopPropagation());
   add.addEventListener("keydown", (e) => {
     const v = add.value.trim();
-    if (e.key === "Enter" && v) createTag(task, v);
+    if (e.key === "Enter" && v) createTag(task, v, pendingColor);
   });
-  menu.appendChild(add);
+  newRow.append(newDot, add);
+  menu.appendChild(newRow);
 }
 
-function createTag(task, label) {
+function createTag(task, label, color) {
   const cat = categoryOf(task);
   if (!cat) return;
-  const tag = { key: makeId(), label };
-  tagsOf(cat).push(tag);
+  const tags = tagsOf(cat);
+  const tag = { key: makeId(), label, color: color || CATEGORY_COLORS[tags.length % CATEGORY_COLORS.length] };
+  tags.push(tag);
   persistCategories();
   updateAndRender(task.id, { tag: tag.key }); // creating selects it for this task
+}
+
+// Click a tag's colour dot to cycle through the palette (keeps the menu open).
+function cycleTagColor(tag, dotEl) {
+  const i = CATEGORY_COLORS.indexOf(tag.color);
+  tag.color = CATEGORY_COLORS[(i + 1) % CATEGORY_COLORS.length];
+  if (dotEl) dotEl.style.background = tag.color;
+  persistCategories();
 }
 
 function renameTag(pickBtn, tag) {
@@ -807,7 +841,12 @@ function renderCard(task) {
   const pill = node.querySelector(".tag-pill");
   if (selectedTag) {
     pill.hidden = false;
-    pill.textContent = selectedTag.label;
+    const color = selectedTag.color || "#94a3b8";
+    pill.innerHTML = `<span class="tag-pill-dot"></span>`;
+    pill.querySelector(".tag-pill-dot").style.background = color;
+    pill.append(selectedTag.label);
+    pill.style.background = color + "1a";
+    pill.style.color = "var(--text)";
   }
   const chip = node.querySelector(".progress-chip");
   if (checklist.length) {
