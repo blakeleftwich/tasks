@@ -1010,8 +1010,12 @@ async function initSync() {
 }
 
 async function setUser(nextUser) {
+  const sameUser = user && nextUser && user.id === nextUser.id;
   const firstSignIn = !user && !!nextUser;
   user = nextUser;
+  // Token-refresh / focus events re-fire for the same user — don't re-run board
+  // setup (that's what created duplicate "My Tasks" boards).
+  if (sameUser) return;
   if (user) {
     await setupBoards(); // load boards, honor a share link, pick the active board
     const probe = await supa.from("tasks").select("checklist").limit(1);
@@ -1020,6 +1024,7 @@ async function setUser(nextUser) {
     completedSyncable = !probeDone.error;
     const probeCols = await supa.from("boards").select("columns").limit(1);
     columnsSyncable = !probeCols.error; // false until supabase-categories.sql is run
+    await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
     loadCategoriesForBoard(); // this board's categories
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
     subscribeRealtime();
@@ -1069,6 +1074,25 @@ async function ensurePersonalBoard() {
   }
   await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
   boards.push(board);
+}
+
+// Remove extra "My Tasks" boards left by the old duplicate-creation race — but
+// only ones with zero tasks, so no data is ever lost.
+async function cleanupDuplicatePersonalBoards() {
+  const isDupe = (b) => b.owner_id === user.id && b.name === "My Tasks";
+  if (boards.filter(isDupe).length <= 1) return;
+  for (const b of boards.filter(isDupe)) {
+    if (boards.filter(isDupe).length <= 1) break; // always keep one
+    const { count, error } = await supa.from("tasks").select("id", { count: "exact", head: true }).eq("board_id", b.id);
+    if (error || count) continue; // keep boards that have tasks (or if the count failed)
+    await supa.from("boards").delete().eq("id", b.id);
+    boards = boards.filter((x) => x.id !== b.id);
+    if (currentBoardId === b.id) currentBoardId = null;
+  }
+  if (!currentBoardId || !boards.some((b) => b.id === currentBoardId)) {
+    currentBoardId = (boards.find((b) => b.owner_id === user.id) || boards[0] || {}).id || null;
+    if (currentBoardId) localStorage.setItem("currentBoardId", currentBoardId);
+  }
 }
 
 async function maybeJoinFromLink() {
