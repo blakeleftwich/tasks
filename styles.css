@@ -317,6 +317,139 @@ html, body {
   border-color: var(--progress);
 }
 
+/* ---------- Tab bar (per-board tabs, above the board) ---------- */
+.tab-bar-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px clamp(16px, 4vw, 40px) 0;
+  margin-top: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  cursor: grab;
+}
+.tab:active { cursor: grabbing; }
+
+.tab-name {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 6px 6px 0 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+.tab-name:hover { color: var(--text); background: #eef2fb; }
+.tab.active .tab-name { color: var(--text); font-weight: 700; }
+
+/* Active underline sits on top of the row's bottom border. */
+.tab.active::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+}
+
+.tab-delete {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-right: 2px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.tab:hover .tab-delete,
+.tab.active .tab-delete { opacity: 0.55; }
+.tab-delete:hover { opacity: 1; color: #ef4444; background: #fee2e2; }
+
+.tab-name-input {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  padding: 7px 9px;
+  border: none;
+  border-bottom: 2px solid var(--todo);
+  background: var(--surface);
+  border-radius: 4px 4px 0 0;
+  max-width: 200px;
+}
+.tab-name-input:focus { outline: none; }
+
+.tab-add {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 7px 10px;
+  margin-bottom: 1px;
+  border-radius: 6px;
+  flex: none;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-add:hover { background: #eef2fb; color: var(--text); }
+
+.add-category-btn { flex: none; margin-bottom: 4px; }
+
+/* The tab lifted under the cursor while dragging. */
+.tab-drag-clone {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-drag);
+  transform: rotate(2deg);
+  cursor: grabbing;
+}
+/* The gap that shows where the tab will land. */
+.tab-placeholder {
+  border: 2px dashed var(--todo);
+  background: #eef4ff;
+  border-radius: 6px;
+}
+body.tab-dragging-active { cursor: grabbing; user-select: none; }
+
 /* ---------- Board ---------- */
 .board {
   display: grid;

@@ -1,5 +1,24 @@
 # Session Log
 
+## 2026-06-29 — Per-board tabs
+
+### Accomplished
+- **Tabs**: a left-aligned bar over the board (To-Do / Roadmap / Invites style). Each tab is its own mini-board — **its own columns AND its own tasks**. Click a tab to switch; click the active tab again to rename; × deletes (confirm modal, removes that tab's tasks); drag to reorder (mouse, reuses the column-drag clone+placeholder).
+- **+ Category** moved to the right of the new tab-bar row; **+ Tab** added on the left. New tabs start with three default columns (To Do / In Progress / Done) with fresh keys.
+- **Data model**: per-board `tabs = [{key,label,columns:[…]}]`; `categories` is now a live reference to the active tab's `columns` so all column/tag code is unchanged. Tasks gained a `tab` field. `group()` filters by active tab (single chokepoint). Legacy tasks (no `tab`) are pinned to the first tab via `adoptOrphanTasks()` so reordering tabs can't reassign them.
+- **Persistence**: signed-out → `localStorage taskManager.tabs.v1` `{tabs, activeTabKey}` (migrates the old `taskManager.categories.v1` into one "To-Do" tab). Signed-in → probe-gated `boards.tabs` (jsonb) + `tasks.tab` (text); falls back to the legacy `boards.columns` write when `tabsSyncable` is false. Active tab is a local view pref (not synced).
+
+### Migration (NOT yet applied)
+- **`supabase-tabs.sql`** adds `boards.tabs jsonb` + `tasks.tab text`. **User must run it in the Supabase SQL Editor.** Code is probe-gated (`tabsSyncable`, `taskTabSyncable`), so deploying before the SQL is safe — extra tabs just won't sync cross-device until it's applied.
+
+### Verified (in-harness preview, signed-out)
+- Migration of legacy data into one tab; add/rename/delete tab; per-tab task isolation; can't delete last tab; +Category affects only the active tab; drag-reorder persists; legacy tasks stay with their tab after reorder; full reload restores tabs + active tab + per-tab tasks. No console errors.
+
+### Also
+- `.claude/launch.json` set to `autoPort` (5173 was busy) so the static preview server picks a free port.
+
+---
+
 ## 2026-06-29
 
 ### Session goal

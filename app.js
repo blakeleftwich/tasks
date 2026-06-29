@@ -11,27 +11,88 @@ const DEFAULT_CATEGORIES = [
   { key: "inProgress", label: "In Progress" },
   { key: "done", label: "Done" },
 ];
-// Categories (columns) are editable and unlimited — a board can stay a simple
-// To Do / In Progress / Done list or become a detailed project tracker.
-let categories = loadLocalCategories();
+// A board is split into tabs; each tab owns its own columns (categories) AND its
+// own tasks. Tabs are editable/unlimited — a board can stay a single simple
+// To Do / In Progress / Done list or grow into several parallel trackers.
+// `categories` is always a live reference to the *active* tab's columns, so the
+// column/tag code below can stay tab-agnostic.
+const TABS_KEY = "taskManager.tabs.v1";
+const LEGACY_CATEGORIES_KEY = "taskManager.categories.v1";
+
+let tabs = [];
+let activeTabKey = null;
+let categories = []; // === activeTab().columns (reassigned on every tab switch)
 const categoryKeys = () => categories.map((c) => c.key);
 
-function loadLocalCategories() {
+function makeTab(label, columns) {
+  return {
+    key: makeId(),
+    label: label || "New tab",
+    columns: Array.isArray(columns) && columns.length ? columns : DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+  };
+}
+
+function activeTab() {
+  return tabs.find((t) => t.key === activeTabKey) || tabs[0] || null;
+}
+// The first tab also owns legacy tasks that predate tabs (no `tab` field).
+function activeTabIsFirst() {
+  return tabs.length > 0 && activeTab() === tabs[0];
+}
+function inActiveTab(t) {
+  return t.tab === activeTabKey || (activeTabIsFirst() && !t.tab);
+}
+
+// Point `categories` at the active tab's columns; repair any empty/invalid state.
+function syncActiveCategories() {
+  if (!tabs.length) tabs = [makeTab("To-Do")];
+  if (!activeTab()) activeTabKey = tabs[0].key;
+  const t = activeTab();
+  if (!Array.isArray(t.columns) || !t.columns.length) t.columns = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  categories = t.columns;
+}
+
+// Wrap a board's existing flat `columns` array into a single default tab.
+function tabsFromColumns(columns) {
+  return [makeTab("To-Do", Array.isArray(columns) && columns.length ? columns : null)];
+}
+
+function loadLocalTabs() {
+  // New format: { tabs, activeTabKey }.
   try {
-    const parsed = JSON.parse(localStorage.getItem("taskManager.categories.v1"));
-    if (Array.isArray(parsed) && parsed.length) return parsed;
+    const parsed = JSON.parse(localStorage.getItem(TABS_KEY));
+    if (parsed && Array.isArray(parsed.tabs) && parsed.tabs.length) {
+      tabs = parsed.tabs;
+      activeTabKey = parsed.activeTabKey || tabs[0].key;
+      syncActiveCategories();
+      return;
+    }
   } catch (e) {
     /* ignore */
   }
-  return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-}
-function saveLocalCategories() {
+  // Migrate the old single set of categories into one "To-Do" tab.
+  let cols = null;
   try {
-    localStorage.setItem("taskManager.categories.v1", JSON.stringify(categories));
+    const old = JSON.parse(localStorage.getItem(LEGACY_CATEGORIES_KEY));
+    if (Array.isArray(old) && old.length) cols = old;
+  } catch (e) {
+    /* ignore */
+  }
+  tabs = tabsFromColumns(cols);
+  activeTabKey = tabs[0].key;
+  syncActiveCategories();
+  saveLocalTabs(); // persist now so the generated keys stay stable across reloads/re-loads
+}
+
+function saveLocalTabs() {
+  try {
+    localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeTabKey }));
   } catch (e) {
     /* ignore */
   }
 }
+
+loadLocalTabs(); // populate tabs / activeTabKey / categories (migrating if needed)
 
 const CATEGORY_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899", "#84cc16"];
 
@@ -79,6 +140,8 @@ let checklistSyncable = false; // whether the tasks.checklist column exists yet
 let completedSyncable = false; // whether the tasks.completed column exists yet
 let columnsSyncable = false; // whether the boards.columns column exists yet
 let tagSyncable = false; // whether the tasks.tag column exists yet
+let tabsSyncable = false; // whether the boards.tabs column exists yet
+let taskTabSyncable = false; // whether the tasks.tab column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -174,6 +237,7 @@ function normalizeTask(t) {
     id: t.id || makeId(),
     day: t.day || todayKey(),
     status: t.status || "todo",
+    tab: t.tab || null,
     position: typeof t.position === "number" ? t.position : 0,
     title: t.title || "",
     notes: t.notes || "",
@@ -191,10 +255,10 @@ function getTask(id) {
   return tasks.find((t) => t.id === id) || null;
 }
 
-// Ordered tasks for a given day + column.
+// Ordered tasks for a given day + column, scoped to the active tab.
 function group(day, status) {
   return tasks
-    .filter((t) => t.day === day && t.status === status)
+    .filter((t) => t.day === day && t.status === status && inActiveTab(t))
     .sort((a, b) => a.position - b.position);
 }
 
@@ -238,7 +302,7 @@ function reindex(day, status) {
 }
 
 function addTask(status) {
-  const task = normalizeTask({ day: selectedDate, status, position: group(selectedDate, status).length });
+  const task = normalizeTask({ day: selectedDate, status, tab: activeTabKey, position: group(selectedDate, status).length });
   tasks.push(task);
   expandedCardId = task.id; // open the new card so its title is editable
   selectedCardId = task.id;
@@ -254,7 +318,7 @@ function addTask(status) {
 
 // Inline add: create a named task and keep the add field focused for the next one.
 function quickAddTask(status, title) {
-  const task = normalizeTask({ day: selectedDate, status, position: group(selectedDate, status).length, title });
+  const task = normalizeTask({ day: selectedDate, status, tab: activeTabKey, position: group(selectedDate, status).length, title });
   tasks.push(task);
   persist([task]);
   render();
@@ -331,7 +395,7 @@ function moveTaskTo(id, toStatus, beforeId) {
 
 function carryOver() {
   const today = todayKey();
-  const pending = tasks.filter((t) => t.day < today && !t.completed);
+  const pending = tasks.filter((t) => t.day < today && !t.completed && inActiveTab(t));
   if (!pending.length) return;
   if (!confirm(`Carry over ${pending.length} unfinished task${pending.length === 1 ? "" : "s"} to today?`)) return;
 
@@ -356,25 +420,49 @@ const board = document.getElementById("board");
 const cardTemplate = document.getElementById("card-template");
 
 /* ---------- Categories (columns) ---------- */
+// All column/tag edits live inside a tab, so saving categories saves the tabs.
 function persistCategories() {
+  persistTabs();
+}
+
+function persistTabs() {
   if (supa && user && currentBoardId) {
     const b = boards.find((x) => x.id === currentBoardId);
-    if (b) b.columns = categories;
-    if (columnsSyncable) {
+    const activeCols = activeTab() ? activeTab().columns : categories;
+    if (b) {
+      b.tabs = tabs;
+      b.columns = activeCols; // legacy mirror so old single-set readers still work
+    }
+    if (tabsSyncable) {
       supa
         .from("boards")
-        .update({ columns: categories })
+        .update({ tabs })
+        .eq("id", currentBoardId)
+        .then(({ error }) => error && console.error("Save tabs failed:", error.message));
+    } else if (columnsSyncable) {
+      // Pre-migration fallback: keep at least the active tab's columns synced.
+      supa
+        .from("boards")
+        .update({ columns: activeCols })
         .eq("id", currentBoardId)
         .then(({ error }) => error && console.error("Save categories failed:", error.message));
     }
   } else {
-    saveLocalCategories();
+    saveLocalTabs();
   }
 }
 
-function loadCategoriesForBoard() {
+function loadTabsForBoard() {
   const b = boards.find((x) => x.id === currentBoardId);
-  categories = b && Array.isArray(b.columns) && b.columns.length ? b.columns : DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  if (b && Array.isArray(b.tabs) && b.tabs.length) {
+    tabs = b.tabs;
+  } else if (b && Array.isArray(b.columns) && b.columns.length) {
+    tabs = tabsFromColumns(b.columns); // wrap an existing single-set board into one tab
+  } else {
+    tabs = [makeTab("To-Do")];
+  }
+  activeTabKey = tabs[0].key;
+  syncActiveCategories();
 }
 
 function addCategory() {
@@ -390,7 +478,7 @@ function addCategory() {
 async function deleteCategory(cat) {
   if (categories.length <= 1) return; // keep at least one
   const remaining = categories.filter((c) => c.key !== cat.key);
-  const affected = tasks.filter((t) => t.status === cat.key);
+  const affected = tasks.filter((t) => t.status === cat.key && inActiveTab(t));
   const ok = await confirmModal({
     title: "Delete category?",
     message: affected.length
@@ -403,6 +491,8 @@ async function deleteCategory(cat) {
     t.status = remaining[0].key;
     t.updated_at = nowIso();
   });
+  const t = activeTab();
+  if (t) t.columns = remaining; // keep the tab and the live `categories` ref in step
   categories = remaining;
   persistCategories();
   if (affected.length) {
@@ -581,7 +671,7 @@ function renameTag(pickBtn, tag) {
 async function deleteTag(task, tag) {
   const cat = categoryOf(task);
   if (!cat) return;
-  const users = tasks.filter((t) => t.status === cat.key && t.tag === tag.key);
+  const users = tasks.filter((t) => t.status === cat.key && t.tag === tag.key && inActiveTab(t));
   if (users.length) {
     const ok = await confirmModal({
       title: "Delete tag?",
@@ -728,6 +818,245 @@ function onColumnUp() {
   render();
 }
 
+/* =====================================================================
+ * Tabs — a left-aligned bar above the board. Each tab owns its own columns
+ * AND its own tasks; clicking one switches both. Click the active tab again to
+ * rename it; the × deletes it; drag to reorder (mouse, like cards/columns).
+ * ===================================================================== */
+const tabBar = document.getElementById("tab-bar");
+
+// Pin any legacy tasks that predate the `tab` field to the first tab, so the
+// "first tab owns untagged tasks" rule survives tab reordering.
+function adoptOrphanTasks() {
+  if (!tabs.length) return;
+  const firstKey = tabs[0].key;
+  let changed = false;
+  tasks.forEach((t) => {
+    if (!t.tab) {
+      t.tab = firstKey;
+      changed = true;
+    }
+  });
+  if (changed) saveLocal();
+}
+
+function renderTabs() {
+  if (!tabBar) return;
+  tabBar.innerHTML = "";
+  tabs.forEach((tab) => {
+    const el = document.createElement("div");
+    el.className = "tab" + (tab.key === activeTabKey ? " active" : "");
+    el.dataset.tab = tab.key;
+
+    const name = document.createElement("button");
+    name.className = "tab-name";
+    name.type = "button";
+    name.textContent = tab.label;
+    name.addEventListener("click", () => {
+      if (justTabDragged) return; // a drag, not a click
+      if (tab.key === activeTabKey) startTabRename(name, tab); // click active again → rename
+      else switchTab(tab.key);
+    });
+    el.appendChild(name);
+
+    if (tabs.length > 1) {
+      const del = document.createElement("button");
+      del.className = "tab-delete";
+      del.type = "button";
+      del.title = "Delete tab";
+      del.setAttribute("aria-label", "Delete tab");
+      del.textContent = "×";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteTab(tab);
+      });
+      el.appendChild(del);
+    }
+
+    el.addEventListener("pointerdown", (e) => onTabPointerDown(e, el));
+    tabBar.appendChild(el);
+  });
+
+  const add = document.createElement("button");
+  add.className = "tab-add";
+  add.type = "button";
+  add.textContent = "+ Tab";
+  add.title = "Add a tab";
+  add.addEventListener("click", addTab);
+  tabBar.appendChild(add);
+}
+
+function switchTab(key) {
+  if (!key || key === activeTabKey) return;
+  expandedCardId = null; // drop edit/selection state from the tab we're leaving
+  propsOpenForId = null;
+  selectedCardId = null;
+  activeTabKey = key;
+  syncActiveCategories();
+  if (!(supa && user && currentBoardId)) saveLocalTabs(); // active tab is a local view pref
+  render();
+}
+
+function addTab() {
+  // Fresh column keys keep each tab's columns/tasks independent of the first tab.
+  const tab = makeTab("New tab", DEFAULT_CATEGORIES.map((c) => ({ key: makeId(), label: c.label })));
+  tabs.push(tab);
+  activeTabKey = tab.key;
+  syncActiveCategories();
+  persistTabs();
+  render();
+  const tabEl = [...tabBar.querySelectorAll(".tab")].find((el) => el.dataset.tab === tab.key);
+  const nameEl = tabEl && tabEl.querySelector(".tab-name");
+  if (nameEl) startTabRename(nameEl, tab);
+}
+
+async function deleteTab(tab) {
+  if (tabs.length <= 1) return; // keep at least one
+  const wasFirst = tabs[0] === tab;
+  const doomed = tasks.filter((t) => t.tab === tab.key || (wasFirst && !t.tab));
+  const ok = await confirmModal({
+    title: "Delete tab?",
+    message: doomed.length
+      ? `Delete “${tab.label}”? Its ${doomed.length} task${doomed.length === 1 ? "" : "s"} and columns will be permanently deleted.`
+      : `Delete the empty tab “${tab.label}”?`,
+    confirmLabel: "Delete",
+  });
+  if (!ok) return;
+  doomed.forEach((t) => remoteDelete(t.id));
+  const doomedIds = new Set(doomed.map((t) => t.id));
+  tasks = tasks.filter((t) => !doomedIds.has(t.id));
+  tabs = tabs.filter((x) => x.key !== tab.key);
+  if (activeTabKey === tab.key) activeTabKey = tabs[0].key;
+  syncActiveCategories();
+  saveLocal();
+  persistTabs();
+  render();
+}
+
+function startTabRename(nameEl, tab) {
+  const input = document.createElement("input");
+  input.className = "tab-name-input";
+  input.value = tab.label;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  input.addEventListener("click", (e) => e.stopPropagation());
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const v = input.value.trim();
+    if (v && v !== tab.label) {
+      tab.label = v;
+      persistTabs();
+    }
+    renderTabs();
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      input.value = tab.label;
+      input.blur();
+    }
+  });
+}
+
+/* ---------- Reorder tabs by dragging (clone + placeholder, like columns) ---------- */
+let tabDrag = null;
+let justTabDragged = false;
+
+function onTabPointerDown(e, el) {
+  if (e.button !== 0 || e.pointerType !== "mouse") return;
+  if (e.target.closest("input, .tab-delete")) return; // renaming / deleting
+  justTabDragged = false;
+  const rect = el.getBoundingClientRect();
+  tabDrag = {
+    el,
+    active: false,
+    startX: e.clientX,
+    startY: e.clientY,
+    grabX: e.clientX - rect.left,
+    grabY: e.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+  window.addEventListener("pointermove", onTabMove);
+  window.addEventListener("pointerup", onTabUp, { once: true });
+}
+
+function onTabMove(e) {
+  if (!tabDrag) return;
+  if (!tabDrag.active) {
+    if (Math.hypot(e.clientX - tabDrag.startX, e.clientY - tabDrag.startY) < 6) return;
+    startTabLift();
+  }
+  e.preventDefault();
+  tabDrag.clone.style.left = e.clientX - tabDrag.grabX + "px";
+  tabDrag.clone.style.top = e.clientY - tabDrag.grabY + "px";
+  const after = tabAfterElement(e.clientX);
+  if (after == null) tabBar.insertBefore(tabDrag.placeholder, tabBar.querySelector(".tab-add"));
+  else tabBar.insertBefore(tabDrag.placeholder, after);
+}
+
+function startTabLift() {
+  tabDrag.active = true;
+  document.body.classList.add("tab-dragging-active");
+  const el = tabDrag.el;
+  const clone = el.cloneNode(true);
+  clone.classList.add("tab-drag-clone");
+  clone.style.width = tabDrag.width + "px";
+  clone.style.height = tabDrag.height + "px";
+  document.body.appendChild(clone);
+  tabDrag.clone = clone;
+
+  const ph = document.createElement("div");
+  ph.className = "tab-placeholder";
+  ph.style.width = tabDrag.width + "px";
+  ph.style.height = tabDrag.height + "px";
+  tabDrag.placeholder = ph;
+  el.style.display = "none";
+  el.after(ph);
+}
+
+function tabAfterElement(x) {
+  const els = [...tabBar.querySelectorAll(".tab")].filter((c) => c.style.display !== "none");
+  return els.reduce(
+    (closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = x - box.left - box.width / 2;
+      if (offset < 0 && offset > closest.offset) return { offset, element: child };
+      return closest;
+    },
+    { offset: Number.NEGATIVE_INFINITY, element: null }
+  ).element;
+}
+
+function onTabUp() {
+  window.removeEventListener("pointermove", onTabMove);
+  if (!tabDrag) return;
+  const d = tabDrag;
+  tabDrag = null;
+  if (!d.active) return; // a click (switch/rename), not a drag
+
+  justTabDragged = true;
+  setTimeout(() => (justTabDragged = false), 0);
+
+  const newOrder = [];
+  [...tabBar.children].forEach((el) => {
+    if (el === d.placeholder) newOrder.push(d.el.dataset.tab);
+    else if (el.classList.contains("tab") && el !== d.el) newOrder.push(el.dataset.tab);
+  });
+  tabs.sort((a, b) => newOrder.indexOf(a.key) - newOrder.indexOf(b.key));
+
+  d.clone.remove();
+  d.placeholder.remove();
+  d.el.style.display = "";
+  document.body.classList.remove("tab-dragging-active");
+  persistTabs();
+  render();
+}
+
 function render() {
   const beforeFlip = flipNextRender ? snapshotCards() : null;
   const boardTitle = currentBoardName();
@@ -735,6 +1064,7 @@ function render() {
   document.title = boardTitle === "Daily Task Board" ? boardTitle : `${boardTitle} · Daily Task Board`;
   document.getElementById("date-display").textContent = formatLong(selectedDate);
   document.getElementById("date-picker").value = selectedDate;
+  renderTabs();
   renderCarryOver();
 
   board.innerHTML = "";
@@ -798,7 +1128,7 @@ function render() {
 function renderCarryOver() {
   const btn = document.getElementById("carry-over");
   const today = todayKey();
-  const count = tasks.filter((t) => t.day < today && !t.completed).length;
+  const count = tasks.filter((t) => t.day < today && !t.completed && inActiveTab(t)).length;
   if (selectedDate === today && count > 0) {
     btn.hidden = false;
     btn.textContent = `↪ Carry over ${count} unfinished task${count === 1 ? "" : "s"}`;
@@ -1318,6 +1648,7 @@ function rowFromTask(t) {
   if (checklistSyncable) row.checklist = t.checklist || [];
   if (completedSyncable) row.completed = !!t.completed;
   if (tagSyncable) row.tag = t.tag || null;
+  if (taskTabSyncable) row.tab = t.tab || null; // note: distinct from `tag` above
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -1366,14 +1697,19 @@ async function setUser(nextUser) {
     columnsSyncable = !probeCols.error; // false until supabase-categories.sql is run
     const probeTag = await supa.from("tasks").select("tag").limit(1);
     tagSyncable = !probeTag.error; // false until supabase-tags.sql is run
+    const probeTabs = await supa.from("boards").select("tabs").limit(1);
+    tabsSyncable = !probeTabs.error; // false until supabase-tabs.sql is run
+    const probeTaskTab = await supa.from("tasks").select("tab").limit(1);
+    taskTabSyncable = !probeTaskTab.error;
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
-    loadCategoriesForBoard(); // this board's categories
+    loadTabsForBoard(); // this board's tabs (+ their columns)
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
     subscribeRealtime();
   } else {
     boards = [];
     currentBoardId = null;
-    categories = loadLocalCategories();
+    loadLocalTabs(); // restore local tabs / active tab / categories
+    adoptOrphanTasks();
   }
   renderAuthBar();
   renderBoardControls();
@@ -1477,7 +1813,7 @@ async function switchBoard(id) {
   if (!id || id === currentBoardId) return;
   currentBoardId = id;
   localStorage.setItem("currentBoardId", id);
-  loadCategoriesForBoard();
+  loadTabsForBoard();
   await pullRemote(false);
   renderBoardControls();
   render();
@@ -1525,6 +1861,7 @@ async function pullRemote(maybeMigrate) {
     return;
   }
   tasks = data.map(taskFromRow);
+  adoptOrphanTasks(); // pin pre-migration rows (no `tab`) to the first tab
   saveLocal();
 }
 
@@ -2009,6 +2346,7 @@ document.getElementById("carry-over").addEventListener("click", carryOver);
  * ===================================================================== */
 const hadV2 = localStorage.getItem(STORAGE_KEY) !== null;
 tasks = loadLocal();
+adoptOrphanTasks(); // pin any pre-tabs tasks to the first tab
 if (!hadV2) {
   // First run on this version: persist (incl. any legacy migration) and drop the old key.
   saveLocal();
