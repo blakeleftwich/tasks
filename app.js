@@ -368,6 +368,31 @@ function addCategory() {
   if (last) startCategoryRename(last, cat);
 }
 
+async function deleteCategory(cat) {
+  if (categories.length <= 1) return; // keep at least one
+  const remaining = categories.filter((c) => c.key !== cat.key);
+  const affected = tasks.filter((t) => t.status === cat.key);
+  const ok = await confirmModal({
+    title: "Delete category?",
+    message: affected.length
+      ? `Delete “${cat.label}”? Its ${affected.length} task${affected.length === 1 ? "" : "s"} will move to “${remaining[0].label}”.`
+      : `Delete the empty category “${cat.label}”?`,
+    confirmLabel: "Delete",
+  });
+  if (!ok) return;
+  affected.forEach((t) => {
+    t.status = remaining[0].key;
+    t.updated_at = nowIso();
+  });
+  categories = remaining;
+  persistCategories();
+  if (affected.length) {
+    saveLocal();
+    persist(affected);
+  }
+  render();
+}
+
 function startCategoryRename(nameEl, cat) {
   const input = document.createElement("input");
   input.className = "column-name-input";
@@ -402,7 +427,7 @@ let justColumnDragged = false;
 
 function onColumnPointerDown(e, column) {
   if (e.button !== 0 || e.pointerType !== "mouse") return;
-  if (e.target.closest("input, textarea")) return; // not while renaming / in a field
+  if (e.target.closest("input, textarea, .col-delete")) return; // not renaming / deleting
   justColumnDragged = false;
   colDrag = { column, startX: e.clientX, active: false };
   window.addEventListener("pointermove", onColumnMove);
@@ -479,6 +504,7 @@ function render() {
         <span class="dot"></span>
         <button class="column-name" type="button" title="Click to rename"></button>
         <span class="count">${items.length}</span>
+        <button class="col-delete" type="button" title="Delete category" aria-label="Delete category">×</button>
       </div>
       <div class="card-list"></div>
       <div class="add-row"><input class="add-input" type="text" placeholder="+ Add a task…" aria-label="Add a task" /></div>
@@ -489,6 +515,12 @@ function render() {
     nameEl.addEventListener("click", () => {
       if (justColumnDragged) return; // a drag, not a click
       startCategoryRename(nameEl, col);
+    });
+    const delBtn = column.querySelector(".col-delete");
+    delBtn.hidden = categories.length <= 1; // keep at least one
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteCategory(col);
     });
     column.querySelector(".column-header").addEventListener("pointerdown", (e) => onColumnPointerDown(e, column));
 
@@ -510,13 +542,6 @@ function render() {
     });
     board.appendChild(column);
   });
-
-  const addCat = document.createElement("button");
-  addCat.className = "add-category";
-  addCat.type = "button";
-  addCat.textContent = "+ Add category";
-  addCat.addEventListener("click", addCategory);
-  board.appendChild(addCat);
 
   // Size auto-growing fields of expanded cards now that they're in the DOM.
   board.querySelectorAll(".card.expanded .card-notes, .card.expanded .checklist-text").forEach(autoGrow);
@@ -1602,6 +1627,8 @@ document.getElementById("view-toggle").addEventListener("click", () => {
   applyView();
 });
 applyView();
+
+document.getElementById("add-category").addEventListener("click", addCategory);
 
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open

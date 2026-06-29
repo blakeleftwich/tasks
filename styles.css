@@ -339,21 +339,6 @@ html, body {
 }
 
 /* "+ Add category" tile at the end of the board. */
-.add-category {
-  align-self: start;
-  width: 100%;
-  font: inherit;
-  font-size: 0.9rem;
-  cursor: pointer;
-  border: 1px dashed var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 12px;
-  padding: 14px;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.add-category:hover { background: #f7f9fd; color: var(--text); border-color: var(--todo); }
-
 .column {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -411,12 +396,29 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
   padding: 3px 6px;
   border-radius: 6px;
   text-align: left;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .column-name:hover { background: #eef2fb; }
+
+.col-delete {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.column-header:hover .col-delete { opacity: 0.6; }
+.col-delete:hover { opacity: 1; color: #ef4444; }
 
 .column-name-input {
   font: inherit;
@@ -432,7 +434,6 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
 .column-name-input:focus { outline: none; }
 
 .column-header .count {
-  margin-left: auto;
   color: var(--muted);
   font-size: 0.8rem;
   background: var(--bg);
