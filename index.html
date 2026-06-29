@@ -78,7 +78,7 @@
 
       <div class="card-meta">
         <span class="due-badge" hidden></span>
-        <span class="priority-pill" hidden></span>
+        <span class="tag-pill" hidden></span>
         <span class="progress-chip" hidden></span>
       </div>
 
@@ -94,13 +94,11 @@
           <button class="props-toggle" type="button" aria-expanded="false">More ▾</button>
           <div class="card-props-wrap">
             <div class="card-props">
-              <label class="card-menu-label">Priority</label>
-              <select class="priority-select" aria-label="Priority">
-                <option value="">None</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
+              <label class="card-menu-label">Tag</label>
+              <div class="tag-select">
+                <button class="tag-trigger" type="button">None ▾</button>
+                <div class="tag-menu" hidden></div>
+              </div>
               <label class="card-menu-label">Due date</label>
               <input class="due-input" type="date" aria-label="Due date" />
               <label class="card-menu-label">Color</label>

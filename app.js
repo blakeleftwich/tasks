@@ -61,6 +61,7 @@ let currentBoardId = null; // active board (null = single-board / legacy mode)
 let checklistSyncable = false; // whether the tasks.checklist column exists yet
 let completedSyncable = false; // whether the tasks.completed column exists yet
 let columnsSyncable = false; // whether the boards.columns column exists yet
+let tagSyncable = false; // whether the tasks.tag column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -162,6 +163,7 @@ function normalizeTask(t) {
     due: t.due || null,
     priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : null,
     label: t.label || null,
+    tag: t.tag || null,
     checklist: Array.isArray(t.checklist) ? t.checklist : [],
     completed: !!t.completed,
     updated_at: t.updated_at || nowIso(),
@@ -389,6 +391,163 @@ async function deleteCategory(cat) {
   if (affected.length) {
     saveLocal();
     persist(affected);
+  }
+  render();
+}
+
+/* ---------- Tags (per-category, selected per-task) ---------- */
+const TAG_PENCIL = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`;
+const TAG_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+
+function categoryOf(task) {
+  return categories.find((c) => c.key === task.status) || null;
+}
+function tagsOf(cat) {
+  if (!cat) return [];
+  if (!Array.isArray(cat.tags)) cat.tags = [];
+  return cat.tags;
+}
+
+function renderTagSelector(node, task) {
+  const trigger = node.querySelector(".tag-trigger");
+  const menu = node.querySelector(".tag-menu");
+  const selected = tagsOf(categoryOf(task)).find((t) => t.key === task.tag);
+  trigger.textContent = (selected ? selected.label : "None") + "  ▾";
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willOpen = menu.hidden;
+    document.querySelectorAll(".tag-menu").forEach((m) => (m.hidden = true));
+    if (!willOpen) {
+      menu.hidden = true;
+      return;
+    }
+    buildTagMenu(menu, task);
+    const r = trigger.getBoundingClientRect();
+    menu.style.left = r.left + "px";
+    menu.style.top = r.bottom + 4 + "px";
+    menu.style.minWidth = r.width + "px";
+    menu.hidden = false;
+  });
+}
+
+function buildTagMenu(menu, task) {
+  const cat = categoryOf(task);
+  const tags = tagsOf(cat);
+  menu.innerHTML = "";
+
+  const none = document.createElement("button");
+  none.className = "tag-menu-pick none" + (!task.tag ? " current" : "");
+  none.textContent = "None";
+  none.addEventListener("click", () => {
+    menu.hidden = true;
+    updateAndRender(task.id, { tag: null });
+  });
+  menu.appendChild(none);
+
+  tags.forEach((tag) => {
+    const row = document.createElement("div");
+    row.className = "tag-menu-item";
+    const pick = document.createElement("button");
+    pick.className = "tag-menu-pick" + (task.tag === tag.key ? " current" : "");
+    pick.textContent = tag.label;
+    pick.addEventListener("click", () => {
+      menu.hidden = true;
+      updateAndRender(task.id, { tag: tag.key });
+    });
+    const ren = document.createElement("button");
+    ren.className = "tag-menu-action";
+    ren.title = "Rename tag";
+    ren.innerHTML = TAG_PENCIL;
+    ren.addEventListener("click", (e) => {
+      e.stopPropagation();
+      renameTag(pick, tag);
+    });
+    const del = document.createElement("button");
+    del.className = "tag-menu-action delete";
+    del.title = "Delete tag";
+    del.innerHTML = TAG_TRASH;
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteTag(task, tag);
+    });
+    row.append(pick, ren, del);
+    menu.appendChild(row);
+  });
+
+  const divider = document.createElement("div");
+  divider.className = "tag-menu-divider";
+  menu.appendChild(divider);
+
+  const add = document.createElement("input");
+  add.className = "tag-menu-new";
+  add.placeholder = "+ New tag…";
+  add.addEventListener("click", (e) => e.stopPropagation());
+  add.addEventListener("keydown", (e) => {
+    const v = add.value.trim();
+    if (e.key === "Enter" && v) createTag(task, v);
+  });
+  menu.appendChild(add);
+}
+
+function createTag(task, label) {
+  const cat = categoryOf(task);
+  if (!cat) return;
+  const tag = { key: makeId(), label };
+  tagsOf(cat).push(tag);
+  persistCategories();
+  updateAndRender(task.id, { tag: tag.key }); // creating selects it for this task
+}
+
+function renameTag(pickBtn, tag) {
+  const input = document.createElement("input");
+  input.className = "tag-rename-input";
+  input.value = tag.label;
+  pickBtn.replaceWith(input);
+  input.focus();
+  input.select();
+  input.addEventListener("click", (e) => e.stopPropagation());
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const v = input.value.trim();
+    if (v && v !== tag.label) {
+      tag.label = v;
+      persistCategories();
+    }
+    render();
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      input.value = tag.label;
+      input.blur();
+    }
+  });
+}
+
+async function deleteTag(task, tag) {
+  const cat = categoryOf(task);
+  if (!cat) return;
+  const users = tasks.filter((t) => t.status === cat.key && t.tag === tag.key);
+  if (users.length) {
+    const ok = await confirmModal({
+      title: "Delete tag?",
+      message: `Delete “${tag.label}”? It will be removed from ${users.length} task${users.length === 1 ? "" : "s"} in this category.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+  }
+  cat.tags = tagsOf(cat).filter((t) => t.key !== tag.key);
+  persistCategories();
+  users.forEach((t) => {
+    t.tag = null;
+    t.updated_at = nowIso();
+  });
+  if (users.length) {
+    saveLocal();
+    persist(users);
   }
   render();
 }
@@ -644,11 +803,11 @@ function renderCard(task) {
     badge.textContent = "📅 " + formatShort(task.due);
     if (isOverdue(task)) badge.classList.add("overdue");
   }
-  const pill = node.querySelector(".priority-pill");
-  if (task.priority) {
+  const selectedTag = tagsOf(categoryOf(task)).find((t) => t.key === task.tag);
+  const pill = node.querySelector(".tag-pill");
+  if (selectedTag) {
     pill.hidden = false;
-    pill.textContent = task.priority[0].toUpperCase() + task.priority.slice(1);
-    pill.classList.add(task.priority);
+    pill.textContent = selectedTag.label;
   }
   const chip = node.querySelector(".progress-chip");
   if (checklist.length) {
@@ -658,7 +817,7 @@ function renderCard(task) {
     if (done === checklist.length) chip.classList.add("complete");
     chip.innerHTML = `<span class="progress-track"><span class="progress-fill" style="width:${pct}%"></span></span><span class="progress-count">${done}/${checklist.length}</span>`;
   }
-  node.querySelector(".card-meta").hidden = !task.due && !task.priority && checklist.length === 0;
+  node.querySelector(".card-meta").hidden = !task.due && !selectedTag && checklist.length === 0;
 
   // Description. Enter finishes (blurs); Shift+Enter still inserts a newline.
   notes.value = task.notes;
@@ -677,10 +836,8 @@ function renderCard(task) {
   // Checklist.
   renderChecklist(node, task, checklist);
 
-  // Menu fields: priority, due date, colour (at the bottom).
-  const prio = node.querySelector(".priority-select");
-  prio.value = task.priority || "";
-  prio.addEventListener("change", () => updateAndRender(task.id, { priority: prio.value || null }));
+  // Menu fields: tag, due date, colour (at the bottom).
+  renderTagSelector(node, task);
   const dueInput = node.querySelector(".due-input");
   dueInput.value = task.due || "";
   dueInput.addEventListener("change", () => updateAndRender(task.id, { due: dueInput.value || null }));
@@ -1104,6 +1261,7 @@ function rowFromTask(t) {
   if (currentBoardId) row.board_id = currentBoardId;
   if (checklistSyncable) row.checklist = t.checklist || [];
   if (completedSyncable) row.completed = !!t.completed;
+  if (tagSyncable) row.tag = t.tag || null;
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -1150,6 +1308,8 @@ async function setUser(nextUser) {
     completedSyncable = !probeDone.error;
     const probeCols = await supa.from("boards").select("columns").limit(1);
     columnsSyncable = !probeCols.error; // false until supabase-categories.sql is run
+    const probeTag = await supa.from("tasks").select("tag").limit(1);
+    tagSyncable = !probeTag.error; // false until supabase-tags.sql is run
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
     loadCategoriesForBoard(); // this board's categories
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
@@ -1580,6 +1740,13 @@ function startRename(nameBtn, board) {
 document.addEventListener("click", (e) => {
   const menu = document.getElementById("board-menu");
   if (menu && !menu.hidden && !e.target.closest("#board-menu")) menu.hidden = true;
+});
+
+// Click outside a tag menu closes it.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".tag-select")) {
+    document.querySelectorAll(".tag-menu").forEach((m) => (m.hidden = true));
+  }
 });
 
 // Click outside the expanded card to collapse it.
