@@ -367,9 +367,23 @@ html, body {
 }
 .column-header:active { cursor: grabbing; }
 
-.column.col-dragging {
-  opacity: 0.6;
+/* The full column lifted under the cursor while dragging (like a card). */
+.col-drag-clone {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
   box-shadow: var(--shadow-drag);
+  transform: rotate(2deg);
+  cursor: grabbing;
+}
+/* The gap that shows where the column will land. */
+.col-placeholder {
+  border: 2px dashed var(--todo);
+  background: #eef4ff;
+  border-radius: var(--radius);
 }
 body.col-dragging-active { cursor: grabbing; user-select: none; }
 

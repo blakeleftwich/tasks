@@ -421,7 +421,9 @@ function startCategoryRename(nameEl, cat) {
   });
 }
 
-/* ---------- Reorder categories by dragging the column header ---------- */
+/* ---------- Reorder categories by dragging the column header ----------
+ * Same feel as dragging task cards: a floating clone follows the cursor while a
+ * dashed placeholder shows where the column will land. */
 let colDrag = null;
 let justColumnDragged = false;
 
@@ -429,7 +431,17 @@ function onColumnPointerDown(e, column) {
   if (e.button !== 0 || e.pointerType !== "mouse") return;
   if (e.target.closest("input, textarea, .col-delete")) return; // not renaming / deleting
   justColumnDragged = false;
-  colDrag = { column, startX: e.clientX, active: false };
+  const rect = column.getBoundingClientRect();
+  colDrag = {
+    column,
+    active: false,
+    startX: e.clientX,
+    startY: e.clientY,
+    grabX: e.clientX - rect.left,
+    grabY: e.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
   window.addEventListener("pointermove", onColumnMove);
   window.addEventListener("pointerup", onColumnUp, { once: true });
 }
@@ -437,24 +449,38 @@ function onColumnPointerDown(e, column) {
 function onColumnMove(e) {
   if (!colDrag) return;
   if (!colDrag.active) {
-    if (Math.abs(e.clientX - colDrag.startX) < 6) return;
-    colDrag.active = true;
-    colDrag.column.classList.add("col-dragging");
-    document.body.classList.add("col-dragging-active");
+    if (Math.hypot(e.clientX - colDrag.startX, e.clientY - colDrag.startY) < 6) return;
+    startColumnLift();
   }
   e.preventDefault();
+  colDrag.clone.style.left = e.clientX - colDrag.grabX + "px";
+  colDrag.clone.style.top = e.clientY - colDrag.grabY + "px";
   const after = columnAfterElement(e.clientX);
-  if (after == null) {
-    const addTile = board.querySelector(".add-category");
-    if (addTile) board.insertBefore(colDrag.column, addTile);
-    else board.appendChild(colDrag.column);
-  } else if (after !== colDrag.column) {
-    board.insertBefore(colDrag.column, after);
-  }
+  if (after == null) board.appendChild(colDrag.placeholder);
+  else board.insertBefore(colDrag.placeholder, after);
+}
+
+function startColumnLift() {
+  colDrag.active = true;
+  document.body.classList.add("col-dragging-active");
+  const col = colDrag.column;
+  const clone = col.cloneNode(true);
+  clone.classList.add("col-drag-clone");
+  clone.style.width = colDrag.width + "px";
+  clone.style.height = colDrag.height + "px";
+  document.body.appendChild(clone);
+  colDrag.clone = clone;
+
+  const ph = document.createElement("div");
+  ph.className = "col-placeholder";
+  ph.style.height = colDrag.height + "px";
+  colDrag.placeholder = ph;
+  col.style.display = "none";
+  col.after(ph);
 }
 
 function columnAfterElement(x) {
-  const cols = [...board.querySelectorAll(".column:not(.col-dragging)")];
+  const cols = [...board.querySelectorAll(".column")].filter((c) => c.style.display !== "none");
   return cols.reduce(
     (closest, child) => {
       const box = child.getBoundingClientRect();
@@ -469,16 +495,25 @@ function columnAfterElement(x) {
 function onColumnUp() {
   window.removeEventListener("pointermove", onColumnMove);
   if (!colDrag) return;
-  const wasActive = colDrag.active;
-  colDrag.column.classList.remove("col-dragging");
-  document.body.classList.remove("col-dragging-active");
+  const d = colDrag;
   colDrag = null;
-  if (!wasActive) return; // a click (rename), not a drag
+  if (!d.active) return; // a click (rename), not a drag
 
   justColumnDragged = true;
   setTimeout(() => (justColumnDragged = false), 0);
-  const order = [...board.querySelectorAll(".column")].map((c) => c.dataset.col);
-  categories.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+
+  // New order: the placeholder marks where the dragged column lands.
+  const newOrder = [];
+  [...board.children].forEach((el) => {
+    if (el === d.placeholder) newOrder.push(d.column.dataset.col);
+    else if (el.classList.contains("column") && el !== d.column) newOrder.push(el.dataset.col);
+  });
+  categories.sort((a, b) => newOrder.indexOf(a.key) - newOrder.indexOf(b.key));
+
+  d.clone.remove();
+  d.placeholder.remove();
+  d.column.style.display = "";
+  document.body.classList.remove("col-dragging-active");
   persistCategories();
   render();
 }
