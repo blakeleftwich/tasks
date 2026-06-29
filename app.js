@@ -35,6 +35,23 @@ function saveLocalCategories() {
 
 const CATEGORY_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899", "#84cc16"];
 
+// A dark, readable version of a hex colour: same hue, scaled toward black until
+// its luminance is low enough for AA contrast on the light tinted pill — works
+// for every hue (greens/yellows need more darkening than blues).
+function darkenColor(hex) {
+  const r0 = parseInt(hex.slice(1, 3), 16);
+  const g0 = parseInt(hex.slice(3, 5), 16);
+  const b0 = parseInt(hex.slice(5, 7), 16);
+  const lin = (v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const lum = (f) => 0.2126 * lin(r0 * f) + 0.7152 * lin(g0 * f) + 0.0722 * lin(b0 * f);
+  let f = 1;
+  while (f > 0.15 && lum(f) > 0.14) f -= 0.05;
+  return `rgb(${Math.round(r0 * f)}, ${Math.round(g0 * f)}, ${Math.round(b0 * f)})`;
+}
+
 const LABELS = [
   { key: "blue", color: "#3b82f6" },
   { key: "green", color: "#10b981" },
@@ -846,7 +863,7 @@ function renderCard(task) {
     pill.querySelector(".tag-pill-dot").style.background = color;
     pill.append(selectedTag.label);
     pill.style.background = color + "1a";
-    pill.style.color = "var(--text)";
+    pill.style.color = darkenColor(color);
   }
   const chip = node.querySelector(".progress-chip");
   if (checklist.length) {
