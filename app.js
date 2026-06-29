@@ -6,12 +6,34 @@
 const STORAGE_KEY = "taskManager.v2";
 const LEGACY_KEY = "taskManager.v1";
 
-const COLUMNS = [
+const DEFAULT_CATEGORIES = [
   { key: "todo", label: "To Do" },
   { key: "inProgress", label: "In Progress" },
   { key: "done", label: "Done" },
 ];
-const COLUMN_KEYS = COLUMNS.map((c) => c.key);
+// Categories (columns) are editable and unlimited — a board can stay a simple
+// To Do / In Progress / Done list or become a detailed project tracker.
+let categories = loadLocalCategories();
+const categoryKeys = () => categories.map((c) => c.key);
+
+function loadLocalCategories() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("taskManager.categories.v1"));
+    if (Array.isArray(parsed) && parsed.length) return parsed;
+  } catch (e) {
+    /* ignore */
+  }
+  return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+}
+function saveLocalCategories() {
+  try {
+    localStorage.setItem("taskManager.categories.v1", JSON.stringify(categories));
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+const CATEGORY_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899", "#84cc16"];
 
 const LABELS = [
   { key: "blue", color: "#3b82f6" },
@@ -37,6 +59,8 @@ let user = null; // signed-in user (when authed)
 let boards = []; // boards the signed-in user belongs to
 let currentBoardId = null; // active board (null = single-board / legacy mode)
 let checklistSyncable = false; // whether the tasks.checklist column exists yet
+let completedSyncable = false; // whether the tasks.completed column exists yet
+let columnsSyncable = false; // whether the boards.columns column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -94,7 +118,7 @@ function migrateLegacy() {
     const old = JSON.parse(raw);
     const out = [];
     for (const [day, cols] of Object.entries(old.days || {})) {
-      for (const status of COLUMN_KEYS) {
+      for (const status of ["todo", "inProgress", "done"]) {
         (cols[status] || []).forEach((t, i) => {
           out.push(normalizeTask({ ...t, day, status, position: i }));
         });
@@ -131,7 +155,7 @@ function normalizeTask(t) {
   return {
     id: t.id || makeId(),
     day: t.day || todayKey(),
-    status: COLUMN_KEYS.includes(t.status) ? t.status : "todo",
+    status: t.status || "todo",
     position: typeof t.position === "number" ? t.position : 0,
     title: t.title || "",
     notes: t.notes || "",
@@ -139,6 +163,7 @@ function normalizeTask(t) {
     priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : null,
     label: t.label || null,
     checklist: Array.isArray(t.checklist) ? t.checklist : [],
+    completed: !!t.completed,
     updated_at: t.updated_at || nowIso(),
   };
 }
@@ -155,7 +180,7 @@ function group(day, status) {
 }
 
 function isOverdue(task) {
-  return task.due && task.due < todayKey() && task.status !== "done";
+  return task.due && task.due < todayKey() && !task.completed;
 }
 
 /* =====================================================================
@@ -249,16 +274,12 @@ async function requestDeleteTask(id) {
   if (ok) deleteTask(id);
 }
 
-// Check circle: advance to the next column; Done loops back to In Progress.
-function advanceTask(id) {
+// Check circle: mark complete in place (dim + strikethrough); does not move the task.
+function toggleCompleted(id) {
   const task = getTask(id);
   if (!task) return;
-  const order = ["todo", "inProgress", "done"];
-  const next = task.status === "done" ? "inProgress" : order[order.indexOf(task.status) + 1];
-  if (next && next !== task.status) {
-    flipNextRender = true;
-    moveTaskTo(id, next);
-  }
+  updateTask(id, { completed: !task.completed });
+  render();
 }
 
 // Move a task into a column, optionally before a specific card.
@@ -291,7 +312,7 @@ function moveTaskTo(id, toStatus, beforeId) {
 
 function carryOver() {
   const today = todayKey();
-  const pending = tasks.filter((t) => t.day < today && (t.status === "todo" || t.status === "inProgress"));
+  const pending = tasks.filter((t) => t.day < today && !t.completed);
   if (!pending.length) return;
   if (!confirm(`Carry over ${pending.length} unfinished task${pending.length === 1 ? "" : "s"} to today?`)) return;
 
@@ -299,9 +320,9 @@ function carryOver() {
     t.day = today;
     t.updated_at = nowIso();
   });
-  // Re-pack positions for today's affected columns.
+  // Re-pack positions for each category that received carried-over tasks.
   const changed = new Map(pending.map((t) => [t.id, t]));
-  ["todo", "inProgress"].forEach((s) => reindex(today, s).forEach((t) => changed.set(t.id, t)));
+  [...new Set(pending.map((t) => t.status))].forEach((s) => reindex(today, s).forEach((t) => changed.set(t.id, t)));
   selectedDate = today;
   saveLocal();
   persist([...changed.values()]);
@@ -315,6 +336,66 @@ function carryOver() {
 const board = document.getElementById("board");
 const cardTemplate = document.getElementById("card-template");
 
+/* ---------- Categories (columns) ---------- */
+function persistCategories() {
+  if (supa && user && currentBoardId) {
+    const b = boards.find((x) => x.id === currentBoardId);
+    if (b) b.columns = categories;
+    if (columnsSyncable) {
+      supa
+        .from("boards")
+        .update({ columns: categories })
+        .eq("id", currentBoardId)
+        .then(({ error }) => error && console.error("Save categories failed:", error.message));
+    }
+  } else {
+    saveLocalCategories();
+  }
+}
+
+function loadCategoriesForBoard() {
+  const b = boards.find((x) => x.id === currentBoardId);
+  categories = b && Array.isArray(b.columns) && b.columns.length ? b.columns : DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+}
+
+function addCategory() {
+  const cat = { key: makeId(), label: "New category" };
+  categories.push(cat);
+  persistCategories();
+  render();
+  const headers = board.querySelectorAll(".column-name");
+  const last = headers[headers.length - 1];
+  if (last) startCategoryRename(last, cat);
+}
+
+function startCategoryRename(nameEl, cat) {
+  const input = document.createElement("input");
+  input.className = "column-name-input";
+  input.value = cat.label;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const v = input.value.trim();
+    if (v && v !== cat.label) {
+      cat.label = v;
+      persistCategories();
+    }
+    render();
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      input.value = cat.label;
+      input.blur();
+    }
+  });
+}
+
 function render() {
   const beforeFlip = flipNextRender ? snapshotCards() : null;
   const boardTitle = currentBoardName();
@@ -325,7 +406,7 @@ function render() {
   renderCarryOver();
 
   board.innerHTML = "";
-  COLUMNS.forEach((col) => {
+  categories.forEach((col, index) => {
     const items = group(selectedDate, col.key).filter(matchesSearch);
 
     const column = document.createElement("section");
@@ -334,12 +415,16 @@ function render() {
     column.innerHTML = `
       <div class="column-header">
         <span class="dot"></span>
-        <h2>${col.label}</h2>
+        <button class="column-name" type="button" title="Click to rename"></button>
         <span class="count">${items.length}</span>
       </div>
       <div class="card-list"></div>
-      <div class="add-row"><input class="add-input" type="text" placeholder="+ Add a task…" aria-label="Add a task to ${col.label}" /></div>
+      <div class="add-row"><input class="add-input" type="text" placeholder="+ Add a task…" aria-label="Add a task" /></div>
     `;
+    column.querySelector(".dot").style.background = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+    const nameEl = column.querySelector(".column-name");
+    nameEl.textContent = col.label;
+    nameEl.addEventListener("click", () => startCategoryRename(nameEl, col));
 
     const list = column.querySelector(".card-list");
     if (items.length === 0) {
@@ -360,6 +445,13 @@ function render() {
     board.appendChild(column);
   });
 
+  const addCat = document.createElement("button");
+  addCat.className = "add-category";
+  addCat.type = "button";
+  addCat.textContent = "+ Add category";
+  addCat.addEventListener("click", addCategory);
+  board.appendChild(addCat);
+
   // Size auto-growing fields of expanded cards now that they're in the DOM.
   board.querySelectorAll(".card.expanded .card-notes, .card.expanded .checklist-text").forEach(autoGrow);
 
@@ -370,7 +462,7 @@ function render() {
 function renderCarryOver() {
   const btn = document.getElementById("carry-over");
   const today = todayKey();
-  const count = tasks.filter((t) => t.day < today && (t.status === "todo" || t.status === "inProgress")).length;
+  const count = tasks.filter((t) => t.day < today && !t.completed).length;
   if (selectedDate === today && count > 0) {
     btn.hidden = false;
     btn.textContent = `↪ Carry over ${count} unfinished task${count === 1 ? "" : "s"}`;
@@ -385,22 +477,22 @@ function renderCard(task) {
   const expanded = expandedCardId === task.id;
   if (expanded) node.classList.add("expanded");
   if (task.id === selectedCardId) node.classList.add("selected");
-  if (task.status === "done") node.classList.add("done-card");
+  if (task.completed) node.classList.add("done-card");
 
   // Left edge = the colour you pick.
   const colorDef = LABELS.find((l) => l.key === task.label);
   node.style.borderLeftColor = colorDef ? colorDef.color : "var(--border)";
 
-  // Check circle — advances to the next column (Done → back to In Progress).
+  // Check circle — marks the task complete in place (dim + strikethrough).
   const check = node.querySelector(".check");
-  if (task.status === "done") {
+  if (task.completed) {
     check.classList.add("on");
     check.textContent = "✓";
   }
-  check.title = task.status === "done" ? "Move back to In Progress" : "Move to next column";
+  check.title = task.completed ? "Mark not done" : "Mark done";
   check.addEventListener("click", (e) => {
     e.stopPropagation();
-    advanceTask(task.id);
+    toggleCompleted(task.id);
   });
 
   // Title stays read-only by default. Clicking a collapsed card just expands it
@@ -885,6 +977,7 @@ function rowFromTask(t) {
   const row = { user_id: user.id };
   if (currentBoardId) row.board_id = currentBoardId;
   if (checklistSyncable) row.checklist = t.checklist || [];
+  if (completedSyncable) row.completed = !!t.completed;
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -923,11 +1016,17 @@ async function setUser(nextUser) {
     await setupBoards(); // load boards, honor a share link, pick the active board
     const probe = await supa.from("tasks").select("checklist").limit(1);
     checklistSyncable = !probe.error; // false until supabase-checklist.sql is run
+    const probeDone = await supa.from("tasks").select("completed").limit(1);
+    completedSyncable = !probeDone.error;
+    const probeCols = await supa.from("boards").select("columns").limit(1);
+    columnsSyncable = !probeCols.error; // false until supabase-categories.sql is run
+    loadCategoriesForBoard(); // this board's categories
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
     subscribeRealtime();
   } else {
     boards = [];
     currentBoardId = null;
+    categories = loadLocalCategories();
   }
   renderAuthBar();
   renderBoardControls();
@@ -1012,6 +1111,7 @@ async function switchBoard(id) {
   if (!id || id === currentBoardId) return;
   currentBoardId = id;
   localStorage.setItem("currentBoardId", id);
+  loadCategoriesForBoard();
   await pullRemote(false);
   renderBoardControls();
   render();
@@ -1353,7 +1453,7 @@ function visibleColumn(status) {
 
 function moveSelection(dx, dy) {
   document.body.classList.add("kb-nav"); // reveal the selection ring
-  const cols = COLUMN_KEYS.map(visibleColumn);
+  const cols = categoryKeys().map(visibleColumn);
   let ci = -1;
   let ri = -1;
   cols.forEach((arr, c) => {
@@ -1438,7 +1538,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key.toLowerCase() === "n") {
     e.preventDefault();
-    addTask("todo");
+    addTask((categories[0] || {}).key || "todo");
     return;
   }
   if (expandedCardId) return; // arrows/enter are for the board, not an open card
@@ -1459,7 +1559,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key.toLowerCase() === "c" && selectedCardId) {
     e.preventDefault();
-    advanceTask(selectedCardId);
+    toggleCompleted(selectedCardId);
   }
 });
 

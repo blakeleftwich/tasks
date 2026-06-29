@@ -320,18 +320,39 @@ html, body {
 /* ---------- Board ---------- */
 .board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 1fr);
   gap: 16px;
   padding: clamp(16px, 4vw, 40px);
   align-items: start;
+  overflow-x: auto;
 }
 
 /* Stacked view (toggle): one column, centred for readability. */
 .board.stacked {
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
   grid-template-columns: 1fr;
   max-width: 720px;
   margin-inline: auto;
+  overflow-x: visible;
 }
+
+/* "+ Add category" tile at the end of the board. */
+.add-category {
+  align-self: start;
+  width: 100%;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 12px;
+  padding: 14px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.add-category:hover { background: #f7f9fd; color: var(--text); border-color: var(--todo); }
 
 .column {
   background: var(--surface);
@@ -370,11 +391,37 @@ html, body {
 .column[data-col="inProgress"] .dot { background: var(--progress); }
 .column[data-col="done"] .dot { background: var(--done); }
 
-.column-header h2 {
+.column-name {
   margin: 0;
+  font: inherit;
   font-size: 0.95rem;
   font-weight: 600;
+  color: var(--text);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 6px;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.column-name:hover { background: #eef2fb; }
+
+.column-name-input {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  border: 1px solid var(--todo);
+  border-radius: 6px;
+  padding: 2px 5px;
+  min-width: 0;
+  flex: 1;
+}
+.column-name-input:focus { outline: none; }
 
 .column-header .count {
   margin-left: auto;
@@ -855,11 +902,11 @@ body { padding-bottom: 46px; }
   .header-right { width: 100%; justify-content: space-between; }
   .search-input { width: 100%; }
 
-  /* Keep all three columns side by side, just smaller. */
-  .board { grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px; }
+  /* Compact horizontal categories on phones (swipe for more). */
+  .board { grid-auto-columns: minmax(150px, 1fr); gap: 8px; padding: 10px; }
   .column { border-radius: 9px; }
   .column-header { padding: 8px 8px 6px; gap: 5px; }
-  .column-header h2 { font-size: 0.72rem; }
+  .column-name { font-size: 0.74rem; padding: 2px 4px; }
   .column-header .count { padding: 1px 6px; font-size: 0.68rem; }
   .card-list { padding: 6px; gap: 6px; }
   .add-row { padding: 0 6px 8px; }
