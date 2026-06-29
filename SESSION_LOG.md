@@ -24,7 +24,7 @@
 - Removed `supabase-team.sql` (Option-1 single-shared-list; superseded by boards).
 
 ### In progress / next step
-- **`supabase-tags.sql` NOT yet run** by the user. Until then, a task's *selected* tag saves locally only (tag definitions + colors already sync via `boards.columns`). Next step: have them run `alter table public.tasks add column if not exists tag text;` then re-probe to confirm.
+- None pending — **all Supabase migrations applied** (verified via REST probe). Tag selection now syncs across devices/boards.
 
 ### Open questions / decisions deferred
 - **Priority fully removed** (replaced by tags); old `priority` DB column is vestigial/unused. User OK'd; could restore if wanted.
@@ -36,7 +36,7 @@
 ### Context for next time (gotchas + conventions)
 - **Auto-ship**: commit + push every completed change without asking; user tests on the live site, not the in-harness preview. (Standing preference — see memory.) Still pause before destructive/risky DB actions.
 - **Migrations are probe-gated**: each new DB column has a `*Syncable` flag set by a probe query on sign-in; if the column is missing the field saves locally only and task sync isn't broken. So deploying before the user runs the SQL is safe.
-- **Migration status (verified via REST probe this session)**: boards ✅, checklist ✅, categories (`tasks.completed`, `boards.columns`) ✅ run. `tasks.tag` ❌ pending.
+- **Migration status (verified via REST probe this session)**: all applied — boards ✅, checklist ✅, categories (`tasks.completed`, `boards.columns`) ✅, tags (`tasks.tag`) ✅.
 - **Headless preview quirks** (why I verify with `preview_eval`, not screenshots): viewport reports `innerWidth: 0` → renders in mobile (≤760px) layout; **screenshots time out**; CSS `:focus` doesn't match programmatic `.focus()` (OS window unfocused). **Must reload between eval tests** or in-memory state (tasks/expanded/categories) leaks and gives false results.
 - **Verifying Supabase schema without auth**: curl the REST API with the publishable key (`GET /rest/v1/<table>?select=<col>&limit=1` → 200 `[]` if exists, 400 if missing).
 - **Data model**: task `status`=category key, `tag`=tag key, `label`=color key, `completed`=bool. Categories = `[{key,label,tags:[{key,label,color}]}]` stored in `boards.columns` (signed-in) or `localStorage taskManager.categories.v1` (signed-out). Tasks in `localStorage taskManager.v2`.
