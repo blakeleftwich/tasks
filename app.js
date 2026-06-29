@@ -396,6 +396,68 @@ function startCategoryRename(nameEl, cat) {
   });
 }
 
+/* ---------- Reorder categories by dragging the column header ---------- */
+let colDrag = null;
+let justColumnDragged = false;
+
+function onColumnPointerDown(e, column) {
+  if (e.button !== 0 || e.pointerType !== "mouse") return;
+  if (e.target.closest("input, textarea")) return; // not while renaming / in a field
+  justColumnDragged = false;
+  colDrag = { column, startX: e.clientX, active: false };
+  window.addEventListener("pointermove", onColumnMove);
+  window.addEventListener("pointerup", onColumnUp, { once: true });
+}
+
+function onColumnMove(e) {
+  if (!colDrag) return;
+  if (!colDrag.active) {
+    if (Math.abs(e.clientX - colDrag.startX) < 6) return;
+    colDrag.active = true;
+    colDrag.column.classList.add("col-dragging");
+    document.body.classList.add("col-dragging-active");
+  }
+  e.preventDefault();
+  const after = columnAfterElement(e.clientX);
+  if (after == null) {
+    const addTile = board.querySelector(".add-category");
+    if (addTile) board.insertBefore(colDrag.column, addTile);
+    else board.appendChild(colDrag.column);
+  } else if (after !== colDrag.column) {
+    board.insertBefore(colDrag.column, after);
+  }
+}
+
+function columnAfterElement(x) {
+  const cols = [...board.querySelectorAll(".column:not(.col-dragging)")];
+  return cols.reduce(
+    (closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = x - box.left - box.width / 2;
+      if (offset < 0 && offset > closest.offset) return { offset, element: child };
+      return closest;
+    },
+    { offset: Number.NEGATIVE_INFINITY, element: null }
+  ).element;
+}
+
+function onColumnUp() {
+  window.removeEventListener("pointermove", onColumnMove);
+  if (!colDrag) return;
+  const wasActive = colDrag.active;
+  colDrag.column.classList.remove("col-dragging");
+  document.body.classList.remove("col-dragging-active");
+  colDrag = null;
+  if (!wasActive) return; // a click (rename), not a drag
+
+  justColumnDragged = true;
+  setTimeout(() => (justColumnDragged = false), 0);
+  const order = [...board.querySelectorAll(".column")].map((c) => c.dataset.col);
+  categories.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  persistCategories();
+  render();
+}
+
 function render() {
   const beforeFlip = flipNextRender ? snapshotCards() : null;
   const boardTitle = currentBoardName();
@@ -424,7 +486,11 @@ function render() {
     column.querySelector(".dot").style.background = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
     const nameEl = column.querySelector(".column-name");
     nameEl.textContent = col.label;
-    nameEl.addEventListener("click", () => startCategoryRename(nameEl, col));
+    nameEl.addEventListener("click", () => {
+      if (justColumnDragged) return; // a drag, not a click
+      startCategoryRename(nameEl, col);
+    });
+    column.querySelector(".column-header").addEventListener("pointerdown", (e) => onColumnPointerDown(e, column));
 
     const list = column.querySelector(".card-list");
     if (items.length === 0) {
