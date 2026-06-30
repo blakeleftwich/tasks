@@ -4,7 +4,10 @@
   --text: #1f2733;
   --muted: #6b7686;
   --border: #e3e8f0;
-  --hover: var(--hover); /* subtle interactive hover background (themeable) */
+  --hover: #eef2fb; /* subtle interactive hover background (themeable) */
+  --hover-border: var(--hover-border); /* stronger border on hover / dashed outlines */
+  --accent-soft: var(--accent-soft); /* soft tint behind focused fields + drag targets/placeholders */
+  --field: #f8fafc; /* description textarea background */
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
   --shadow-drag: 0 8px 24px rgba(16, 24, 40, 0.18);
 
@@ -60,6 +63,47 @@ html[data-theme="slate"] {
   --border: #d7dde6; --hover: #e2e8f1;
 }
 
+/* --- Brighter --- */
+html[data-theme="sky"] {
+  --bg: #e0f2fe; --surface: #ffffff; --text: #0c4a6e; --muted: #3f7fa6;
+  --border: #b9e3fb; --hover: #d4ecfd; --hover-border: #93c9ee; --accent-soft: #d9edfd; --field: #f1f9ff;
+}
+html[data-theme="sunny"] {
+  --bg: #fff6d4; --surface: #fffef7; --text: #6b4310; --muted: #a07b1d;
+  --border: #fbe7a3; --hover: #fdf1c2; --hover-border: #ecd07a; --accent-soft: #fdf2c6; --field: #fffdf0;
+}
+html[data-theme="bubblegum"] {
+  --bg: #ffe3f1; --surface: #fffafc; --text: #9d174d; --muted: #c45c86;
+  --border: #fbcbe0; --hover: #ffd5e9; --hover-border: #f3a6c6; --accent-soft: #ffd9ec; --field: #fff5fa;
+}
+
+/* --- Dark --- */
+html[data-theme="midnight"] {
+  --bg: #0f172a; --surface: #1b263b; --text: #e2e8f0; --muted: #94a3b8;
+  --border: #334155; --hover: #243049; --hover-border: #45597a; --accent-soft: #1e3a5f; --field: #162033;
+}
+html[data-theme="carbon"] {
+  --bg: #151515; --surface: #1f1f1f; --text: #ededed; --muted: #9a9a9a;
+  --border: #353535; --hover: #2a2a2a; --hover-border: #4a4a4a; --accent-soft: #2a3340; --field: #191919;
+}
+
+/* --- Neon (dark + vivid; accent recoloured so focus rings/placeholders glow) --- */
+html[data-theme="neon"] {
+  --bg: #0a0a14; --surface: #13131f; --text: #eafcff; --muted: #8a8ac0;
+  --border: #26264a; --hover: #1b1b34; --hover-border: #3d3d70; --accent-soft: #102a44; --field: #10101c;
+  --todo: #22d3ee;
+}
+html[data-theme="synthwave"] {
+  --bg: #1a0b2e; --surface: #251440; --text: #ffe6ff; --muted: #b894d6;
+  --border: #3a2459; --hover: #2e1a4d; --hover-border: #573a73; --accent-soft: #3a1f5c; --field: #1f1238;
+  --todo: #ff2fb9;
+}
+html[data-theme="matrix"] {
+  --bg: #04140a; --surface: #0a1f12; --text: #b9ffce; --muted: #5fae7a;
+  --border: #15381f; --hover: #0e2b18; --hover-border: #2c6440; --accent-soft: #0f3a20; --field: #081910;
+  --todo: #39ff14;
+}
+
 /* ---------- Header ---------- */
 .app-header {
   display: grid;
@@ -92,7 +136,7 @@ html[data-theme="slate"] {
   padding: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
 }
-.theme-btn:hover { background: var(--hover); color: var(--text); border-color: #cdd6e6; }
+.theme-btn:hover { background: var(--hover); color: var(--text); border-color: var(--hover-border); }
 .theme-btn:active { transform: scale(0.92); }
 
 .title-block h1 {
@@ -290,7 +334,7 @@ html[data-theme="slate"] {
 .icon-btn:hover,
 .ghost-btn:hover {
   background: var(--hover);
-  border-color: #cdd6e6;
+  border-color: var(--hover-border);
 }
 
 /* ---------- Auth bar ---------- */
@@ -464,7 +508,7 @@ body.stacked-view .tab-bar {
 /* The gap that shows where the tab will land. */
 .tab-placeholder {
   border: 2px dashed var(--todo);
-  background: #eef4ff;
+  background: var(--accent-soft);
   border-radius: 6px;
 }
 body.tab-dragging-active { cursor: grabbing; user-select: none; }
@@ -505,7 +549,7 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
 }
 
 .column.drag-over {
-  background: #f0f6ff;
+  background: var(--accent-soft);
   outline-color: var(--todo);
 }
 
@@ -534,7 +578,7 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
 /* The gap that shows where the column will land. */
 .col-placeholder {
   border: 2px dashed var(--todo);
-  background: #eef4ff;
+  background: var(--accent-soft);
   border-radius: var(--radius);
 }
 body.col-dragging-active { cursor: grabbing; user-select: none; }
@@ -630,7 +674,7 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
   width: 100%;
   font: inherit;
   font-size: 0.88rem;
-  border: 1px dashed #cbd5e6;
+  border: 1px dashed var(--hover-border);
   background: transparent;
   color: var(--text);
   border-radius: 8px;
@@ -674,7 +718,7 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
 /* The gap that shows where the card will land. */
 .card-placeholder {
   border: 2px dashed var(--todo);
-  background: #eef4ff;
+  background: var(--accent-soft);
   border-radius: 10px;
 }
 
@@ -698,7 +742,7 @@ body.tab-dragging-active { touch-action: none; }
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid #cbd5e6;
+  border: 2px solid var(--hover-border);
   background: var(--surface);
   cursor: pointer;
   padding: 0;
@@ -727,7 +771,7 @@ body.tab-dragging-active { touch-action: none; }
 }
 .card-title[readonly] { cursor: pointer; }
 .card-title:focus { outline: none; }
-.card-title:not([readonly]):focus { background: #f3f7ff; }
+.card-title:not([readonly]):focus { background: var(--accent-soft); }
 
 .delete-btn {
   flex: none;
@@ -766,7 +810,7 @@ body.tab-dragging-active { touch-action: none; }
   font: inherit;
   font-size: 0.85rem;
   color: var(--text);
-  background: #f8fafc;
+  background: var(--field);
   border: 1px solid var(--border);
   border-radius: 8px;
   resize: none;
@@ -812,7 +856,7 @@ body.tab-dragging-active { touch-action: none; }
   border-radius: 999px;
   padding: 2px 9px;
   background: var(--hover);
-  color: #475569;
+  color: var(--text);
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -902,7 +946,7 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
   resize: none;
   overflow: hidden;
 }
-.checklist-text:focus { outline: none; background: #f3f7ff; }
+.checklist-text:focus { outline: none; background: var(--accent-soft); }
 .checklist-item.done .checklist-text { text-decoration: line-through; color: var(--muted); }
 .checklist-del {
   flex: none;

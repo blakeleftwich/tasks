@@ -2357,8 +2357,18 @@ document.getElementById("add-tab").addEventListener("click", addTab);
 /* ---------- Colour theme (per board, cycled with the palette button) ----------
  * Remembered per board locally (a personal view preference, like the active
  * tab) so each board reopens in the colour it was left on. */
-const THEMES = ["default", "sand", "mint", "rose", "lavender", "slate"];
-const THEME_LABELS = { default: "Default", sand: "Sand", mint: "Mint", rose: "Rose", lavender: "Lavender", slate: "Slate" };
+const THEMES = [
+  "default", "sand", "mint", "rose", "lavender", "slate", // light
+  "sky", "sunny", "bubblegum", // bright
+  "midnight", "carbon", // dark
+  "neon", "synthwave", "matrix", // neon
+];
+const THEME_LABELS = {
+  default: "Default", sand: "Sand", mint: "Mint", rose: "Rose", lavender: "Lavender", slate: "Slate",
+  sky: "Sky", sunny: "Sunny", bubblegum: "Bubblegum",
+  midnight: "Midnight", carbon: "Carbon",
+  neon: "Neon", synthwave: "Synthwave", matrix: "Matrix",
+};
 
 function themeBoardKey() {
   return user && currentBoardId ? currentBoardId : "__local__";
