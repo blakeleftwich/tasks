@@ -14,6 +14,11 @@
 ### Verified (in-harness preview, signed-out)
 - Migration of legacy data into one tab; add/rename/delete tab; per-tab task isolation; can't delete last tab; +Category affects only the active tab; drag-reorder persists; legacy tasks stay with their tab after reorder; full reload restores tabs + active tab + per-tab tasks. No console errors.
 
+### Follow-up refinements (same day)
+- **+ Tab + + Category** moved together to the toolbar's right (`.toolbar-right`), both as ghost buttons, vertically aligned with the Stack/Columns toggle. Removed the stray vertical scrollbar arrows (the tab bar's `overflow-x:auto` was implicitly making `overflow-y` auto → set `overflow-y:hidden`).
+- **Tab bar now aligns with the board**: full-width in columns mode, centred (720px, via `body.stacked-view`) in stack mode, so the leftmost tab sits over the first category card's left corner in both modes. Active-tab indicator changed from a clipped `::after` to a `border-bottom` on `.tab-name`.
+- **New default**: new boards (`createBoard`) and new tabs (`addTab`) now start with a **single** category (`defaultColumns()`), not three. Migration still keeps the canonical 3 columns for browsers that already had tasks (`hasLegacyTasks()`), so no existing tasks are orphaned.
+
 ### Also
 - `.claude/launch.json` set to `autoPort` (5173 was busy) so the static preview server picks a free port.
 

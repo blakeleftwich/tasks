@@ -35,13 +35,14 @@
       <input id="search" class="search-input" type="text" placeholder="Search tasks…  ( / )" aria-label="Search tasks" />
       <button id="view-toggle" class="ghost-btn" type="button"></button>
     </div>
-    <button id="carry-over" class="ghost-btn carry-btn" hidden></button>
+    <div class="toolbar-right">
+      <button id="carry-over" class="ghost-btn carry-btn" hidden></button>
+      <button id="add-tab" class="ghost-btn" type="button">+ Tab</button>
+      <button id="add-category" class="ghost-btn" type="button">+ Category</button>
+    </div>
   </div>
 
-  <div class="tab-bar-row">
-    <nav id="tab-bar" class="tab-bar" aria-label="Board tabs"><!-- tabs + “+ Tab” rendered by app.js --></nav>
-    <button id="add-category" class="ghost-btn add-category-btn" type="button">+ Category</button>
-  </div>
+  <nav id="tab-bar" class="tab-bar" aria-label="Board tabs"><!-- tabs rendered by app.js --></nav>
 
   <main id="board" class="board">
     <!-- Columns rendered by app.js -->

@@ -285,7 +285,8 @@ html, body {
   min-height: 0;
 }
 
-.toolbar-left {
+.toolbar-left,
+.toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -318,23 +319,21 @@ html, body {
 }
 
 /* ---------- Tab bar (per-board tabs, above the board) ---------- */
-.tab-bar-row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px clamp(16px, 4vw, 40px) 0;
-  margin-top: 8px;
-  border-bottom: 1px solid var(--border);
-}
-
+/* Aligns with the board: full-width in columns mode, centred (720px) in stack
+   mode, so the leftmost tab sits over the top category card's left corner. */
 .tab-bar {
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  flex: 1;
-  min-width: 0;
+  padding: 10px clamp(16px, 4vw, 40px) 0;
+  margin-top: 6px;
+  border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  overflow-y: hidden;
+}
+body.stacked-view .tab-bar {
+  max-width: 720px;
+  margin-inline: auto;
 }
 
 .tab {
@@ -357,26 +356,15 @@ html, body {
   cursor: pointer;
   padding: 8px 10px;
   border-radius: 6px 6px 0 0;
+  border-bottom: 2px solid transparent; /* active state colours this; sits over the row line */
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 .tab-name:hover { color: var(--text); background: #eef2fb; }
-.tab.active .tab-name { color: var(--text); font-weight: 700; }
-
-/* Active underline sits on top of the row's bottom border. */
-.tab.active::after {
-  content: "";
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: -1px;
-  height: 2px;
-  background: var(--text);
-  border-radius: 2px;
-}
+.tab.active .tab-name { color: var(--text); font-weight: 700; border-bottom-color: var(--text); }
 
 .tab-delete {
   flex: none;
@@ -409,23 +397,6 @@ html, body {
   max-width: 200px;
 }
 .tab-name-input:focus { outline: none; }
-
-.tab-add {
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--muted);
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 7px 10px;
-  margin-bottom: 1px;
-  border-radius: 6px;
-  flex: none;
-  transition: background 0.15s, color 0.15s;
-}
-.tab-add:hover { background: #eef2fb; color: var(--text); }
-
-.add-category-btn { flex: none; margin-bottom: 4px; }
 
 /* The tab lifted under the cursor while dragging. */
 .tab-drag-clone {

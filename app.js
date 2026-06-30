@@ -32,6 +32,23 @@ function makeTab(label, columns) {
   };
 }
 
+// New boards / new tabs start with a single blank category (user preference).
+function defaultColumns() {
+  return [{ key: makeId(), label: "To Do" }];
+}
+
+// Did this browser already have tasks before tabs existed? If so, the migrated
+// first tab must keep the canonical To Do / In Progress / Done columns so those
+// tasks (status todo/inProgress/done) still have a home.
+function hasLegacyTasks() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return !!(parsed && Array.isArray(parsed.tasks) && parsed.tasks.length);
+  } catch (e) {
+    return false;
+  }
+}
+
 function activeTab() {
   return tabs.find((t) => t.key === activeTabKey) || tabs[0] || null;
 }
@@ -78,7 +95,10 @@ function loadLocalTabs() {
   } catch (e) {
     /* ignore */
   }
-  tabs = tabsFromColumns(cols);
+  // No saved categories: keep canonical columns only if legacy tasks need them,
+  // otherwise start fresh with a single category.
+  if (!cols) cols = hasLegacyTasks() ? DEFAULT_CATEGORIES.map((c) => ({ ...c })) : defaultColumns();
+  tabs = [makeTab("To-Do", cols)];
   activeTabKey = tabs[0].key;
   syncActiveCategories();
   saveLocalTabs(); // persist now so the generated keys stay stable across reloads/re-loads
@@ -876,14 +896,6 @@ function renderTabs() {
     el.addEventListener("pointerdown", (e) => onTabPointerDown(e, el));
     tabBar.appendChild(el);
   });
-
-  const add = document.createElement("button");
-  add.className = "tab-add";
-  add.type = "button";
-  add.textContent = "+ Tab";
-  add.title = "Add a tab";
-  add.addEventListener("click", addTab);
-  tabBar.appendChild(add);
 }
 
 function switchTab(key) {
@@ -898,8 +910,8 @@ function switchTab(key) {
 }
 
 function addTab() {
-  // Fresh column keys keep each tab's columns/tasks independent of the first tab.
-  const tab = makeTab("New tab", DEFAULT_CATEGORIES.map((c) => ({ key: makeId(), label: c.label })));
+  // Start with a single blank category; fresh keys keep it independent of other tabs.
+  const tab = makeTab("New tab", defaultColumns());
   tabs.push(tab);
   activeTabKey = tab.key;
   syncActiveCategories();
@@ -995,7 +1007,7 @@ function onTabMove(e) {
   tabDrag.clone.style.left = e.clientX - tabDrag.grabX + "px";
   tabDrag.clone.style.top = e.clientY - tabDrag.grabY + "px";
   const after = tabAfterElement(e.clientX);
-  if (after == null) tabBar.insertBefore(tabDrag.placeholder, tabBar.querySelector(".tab-add"));
+  if (after == null) tabBar.appendChild(tabDrag.placeholder);
   else tabBar.insertBefore(tabDrag.placeholder, after);
 }
 
@@ -1829,8 +1841,10 @@ async function createBoard() {
     return;
   }
   await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
+  board.tabs = [makeTab("To-Do", defaultColumns())]; // new boards start with one category
   boards.push(board);
   await switchBoard(board.id);
+  persistTabs(); // save the initial single-category tab to this new board
 }
 
 async function shareBoard(btn) {
@@ -2212,6 +2226,7 @@ document.addEventListener("pointerdown", () => document.body.classList.remove("k
 let stackedView = localStorage.getItem("stackedView") === "1";
 function applyView() {
   board.classList.toggle("stacked", stackedView);
+  document.body.classList.toggle("stacked-view", stackedView); // centre the tab bar to match
   const btn = document.getElementById("view-toggle");
   btn.textContent = stackedView ? "▥ Columns" : "▤ Stack";
   btn.title = stackedView ? "Switch to side-by-side columns" : "Switch to a stacked view";
@@ -2224,6 +2239,7 @@ document.getElementById("view-toggle").addEventListener("click", () => {
 applyView();
 
 document.getElementById("add-category").addEventListener("click", addCategory);
+document.getElementById("add-tab").addEventListener("click", addTab);
 
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
