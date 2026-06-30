@@ -1,5 +1,15 @@
 # Session Log
 
+## 2026-06-30 — Mobile layout pass
+
+### Mobile usability (touch drag already shipped earlier)
+- **Chrome height cut ~380px → 272px** above the board on a 375px screen. Header: compact date (`formatHeaderDate()` shows "Today" / "Tue, Jun 30" when `innerWidth<=600`, full long date otherwise; a `resize` listener swaps on rotate), smaller title/board-name/date fonts, tighter padding, truncated signed-in email. Toolbar: now two tidy rows ([search | Stack] then [+Tab +Category]) via `toolbar-left/right { flex:1 1 100% }` + search `flex:1` instead of `width:100%`.
+- **Check circle bumped 15px → 20px** on mobile (tap target); card title 0.78→0.82rem.
+- Verified at 375px: no horizontal overflow, tap-to-expand + check-tap work, expanded card fits, tag menu stays on-screen, board scrolls horizontally, delete modal has edge gaps. Desktop long-date unchanged. No console errors.
+- Note: check `#475569`→`var(--text)` etc. were part of the earlier theme commit; this pass is layout-only.
+
+---
+
 ## 2026-06-30 — Colour themes + confirmations
 
 ### Migration confirmed

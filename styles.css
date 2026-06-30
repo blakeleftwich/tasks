@@ -1222,13 +1222,23 @@ body { padding-bottom: 46px; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 760px) {
-  .app-header { grid-template-columns: 1fr; }
+  /* Trim the header so tasks aren't pushed far down the screen. */
+  .app-header { grid-template-columns: 1fr; padding: 10px clamp(12px, 4vw, 40px); gap: 8px; }
   .app-header > .title-block,
   .app-header > .date-nav,
   .app-header > .header-right { justify-self: stretch; }
-  .date-nav { justify-content: flex-start; flex-wrap: wrap; }
+  .title-block h1 { font-size: 1.15rem; }
+  .board-name, .board-name-input { font-size: 1.1rem; }
+  .date-nav { justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .date-display { font-size: 0.88rem; padding: 5px 8px; }
   .header-right { width: 100%; justify-content: space-between; }
-  .search-input { width: 100%; }
+  .auth-bar .user-email { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Toolbar in two tidy rows: [search | view] then the add buttons. */
+  .toolbar { padding: 8px clamp(12px, 4vw, 40px) 0; gap: 8px; }
+  .toolbar-left { flex: 1 1 100%; }
+  .toolbar-right { flex: 1 1 100%; justify-content: flex-start; }
+  .search-input { width: auto; flex: 1; min-width: 0; }
 
   /* Compact horizontal categories on phones (swipe for more). */
   .board { grid-auto-columns: minmax(150px, 1fr); gap: 8px; padding: 10px; }
@@ -1241,8 +1251,8 @@ body { padding-bottom: 46px; }
   .add-input { padding: 7px; font-size: 0.78rem; }
   .card { padding: 7px 8px; border-radius: 8px; }
   .card-top { gap: 6px; }
-  .card-title { font-size: 0.78rem; }
-  .check { width: 15px; height: 15px; }
+  .card-title { font-size: 0.82rem; }
+  .check { width: 20px; height: 20px; } /* bigger tap target for touch */
   .card-meta { gap: 4px; }
 
   /* Keyboard shortcuts are desktop-only; reclaim the space on touch. */

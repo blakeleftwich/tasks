@@ -187,6 +187,14 @@ function formatLong(key) {
   if (key === todayKey()) label = "Today · " + label;
   return label;
 }
+// The header date — compact on narrow (phone) screens so it stays one line.
+function formatHeaderDate(key) {
+  if (window.innerWidth <= 600) {
+    if (key === todayKey()) return "Today";
+    return keyToDate(key).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+  return formatLong(key);
+}
 function formatShort(key) {
   return keyToDate(key).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -1130,7 +1138,7 @@ function render() {
   const boardTitle = currentBoardName();
   document.getElementById("app-title").textContent = boardTitle;
   document.title = boardTitle === "Daily Task Board" ? boardTitle : `${boardTitle} · Daily Task Board`;
-  document.getElementById("date-display").textContent = formatLong(selectedDate);
+  document.getElementById("date-display").textContent = formatHeaderDate(selectedDate);
   document.getElementById("date-picker").value = selectedDate;
   renderTabs();
   renderCarryOver();
@@ -2407,6 +2415,12 @@ function cycleTheme() {
 }
 document.getElementById("theme-btn").addEventListener("click", cycleTheme);
 applyBoardTheme();
+
+// Keep the header date in its compact/long form as the viewport changes (rotate).
+window.addEventListener("resize", () => {
+  const el = document.getElementById("date-display");
+  if (el) el.textContent = formatHeaderDate(selectedDate);
+});
 
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
