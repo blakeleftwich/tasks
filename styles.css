@@ -16,6 +16,7 @@
   --p-low: #60a5fa;
 
   --radius: 12px;
+  --stack-width: 900px; /* width of the single column in stacked view */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
@@ -332,7 +333,7 @@ html, body {
   overflow-y: hidden;
 }
 body.stacked-view .tab-bar {
-  max-width: 720px;
+  max-width: var(--stack-width);
   margin-inline: auto;
 }
 
@@ -437,7 +438,7 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
   grid-auto-flow: row;
   grid-auto-columns: auto;
   grid-template-columns: 1fr;
-  max-width: 720px;
+  max-width: var(--stack-width);
   margin-inline: auto;
   overflow-x: visible;
 }
@@ -632,6 +633,11 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
 
 body.dragging-active { user-select: none; cursor: grabbing; }
 body.dragging-active .empty-hint { display: none; }
+
+/* While a drag is active, stop touch scrolling from fighting the drag. */
+body.dragging-active,
+body.col-dragging-active,
+body.tab-dragging-active { touch-action: none; }
 
 .card-top {
   display: flex;

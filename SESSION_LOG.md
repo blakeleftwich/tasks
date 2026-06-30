@@ -22,6 +22,10 @@
 ### Also
 - `.claude/launch.json` set to `autoPort` (5173 was busy) so the static preview server picks a free port.
 
+### Follow-up 2 — wider stacked column + mobile/touch drag
+- **Stacked view column** widened 720 → **900px** via a new `--stack-width` CSS var (used by both `.board.stacked` and the centred `.tab-bar`).
+- **Touch/mobile drag now works** (was mouse-only). Custom pointer drag is now mouse **and** touch: mouse keeps the move-threshold behaviour; touch uses a **long-press (300ms, ~12px slop)** to pick up a card / column header / tab, and moving before the press completes scrolls instead. Applied to all four drag handlers (`onCardPointerDown`/`onColumnPointerDown`/`onTabPointerDown` long-press; checklist handle drags immediately since it's a dedicated handle). Added `pointercancel` cleanup + `removeXListeners()` helpers, `touch-action:none` on the body during an active drag, and `navigator.vibrate` feedback on pickup. Taps still switch tabs / expand cards / rename. Verified all paths with simulated `pointerType:'touch'` events (long-press drag, scroll-cancel, tap-to-expand, tab tap-switch).
+
 ---
 
 ## 2026-06-29

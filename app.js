@@ -747,29 +747,56 @@ function startCategoryRename(nameEl, cat) {
 let colDrag = null;
 let justColumnDragged = false;
 
+function removeColumnListeners() {
+  window.removeEventListener("pointermove", onColumnMove);
+  window.removeEventListener("pointerup", onColumnUp);
+  window.removeEventListener("pointercancel", onColumnUp);
+}
+
 function onColumnPointerDown(e, column) {
-  if (e.button !== 0 || e.pointerType !== "mouse") return;
+  const touch = isTouch(e);
+  if (!touch && e.button !== 0) return;
   if (e.target.closest("input, textarea, .col-delete")) return; // not renaming / deleting
   justColumnDragged = false;
   const rect = column.getBoundingClientRect();
   colDrag = {
     column,
     active: false,
+    touch,
     startX: e.clientX,
     startY: e.clientY,
     grabX: e.clientX - rect.left,
     grabY: e.clientY - rect.top,
     width: rect.width,
     height: rect.height,
+    lpTimer: null,
   };
+  if (touch) {
+    colDrag.lpTimer = setTimeout(() => {
+      if (colDrag && !colDrag.active) {
+        startColumnLift();
+        buzz();
+      }
+    }, LONG_PRESS_MS);
+  }
   window.addEventListener("pointermove", onColumnMove);
-  window.addEventListener("pointerup", onColumnUp, { once: true });
+  window.addEventListener("pointerup", onColumnUp);
+  window.addEventListener("pointercancel", onColumnUp);
 }
 
 function onColumnMove(e) {
   if (!colDrag) return;
   if (!colDrag.active) {
-    if (Math.hypot(e.clientX - colDrag.startX, e.clientY - colDrag.startY) < 6) return;
+    const dist = Math.hypot(e.clientX - colDrag.startX, e.clientY - colDrag.startY);
+    if (colDrag.touch) {
+      if (dist > TOUCH_SLOP) {
+        clearTimeout(colDrag.lpTimer);
+        removeColumnListeners();
+        colDrag = null;
+      }
+      return;
+    }
+    if (dist < 6) return;
     startColumnLift();
   }
   e.preventDefault();
@@ -813,11 +840,12 @@ function columnAfterElement(x) {
 }
 
 function onColumnUp() {
-  window.removeEventListener("pointermove", onColumnMove);
+  removeColumnListeners();
   if (!colDrag) return;
+  if (colDrag.lpTimer) clearTimeout(colDrag.lpTimer);
   const d = colDrag;
   colDrag = null;
-  if (!d.active) return; // a click (rename), not a drag
+  if (!d.active) return; // a tap (rename), not a drag
 
   justColumnDragged = true;
   setTimeout(() => (justColumnDragged = false), 0);
@@ -978,29 +1006,56 @@ function startTabRename(nameEl, tab) {
 let tabDrag = null;
 let justTabDragged = false;
 
+function removeTabListeners() {
+  window.removeEventListener("pointermove", onTabMove);
+  window.removeEventListener("pointerup", onTabUp);
+  window.removeEventListener("pointercancel", onTabUp);
+}
+
 function onTabPointerDown(e, el) {
-  if (e.button !== 0 || e.pointerType !== "mouse") return;
+  const touch = isTouch(e);
+  if (!touch && e.button !== 0) return;
   if (e.target.closest("input, .tab-delete")) return; // renaming / deleting
   justTabDragged = false;
   const rect = el.getBoundingClientRect();
   tabDrag = {
     el,
     active: false,
+    touch,
     startX: e.clientX,
     startY: e.clientY,
     grabX: e.clientX - rect.left,
     grabY: e.clientY - rect.top,
     width: rect.width,
     height: rect.height,
+    lpTimer: null,
   };
+  if (touch) {
+    tabDrag.lpTimer = setTimeout(() => {
+      if (tabDrag && !tabDrag.active) {
+        startTabLift();
+        buzz();
+      }
+    }, LONG_PRESS_MS);
+  }
   window.addEventListener("pointermove", onTabMove);
-  window.addEventListener("pointerup", onTabUp, { once: true });
+  window.addEventListener("pointerup", onTabUp);
+  window.addEventListener("pointercancel", onTabUp);
 }
 
 function onTabMove(e) {
   if (!tabDrag) return;
   if (!tabDrag.active) {
-    if (Math.hypot(e.clientX - tabDrag.startX, e.clientY - tabDrag.startY) < 6) return;
+    const dist = Math.hypot(e.clientX - tabDrag.startX, e.clientY - tabDrag.startY);
+    if (tabDrag.touch) {
+      if (dist > TOUCH_SLOP) {
+        clearTimeout(tabDrag.lpTimer);
+        removeTabListeners();
+        tabDrag = null;
+      }
+      return;
+    }
+    if (dist < 6) return;
     startTabLift();
   }
   e.preventDefault();
@@ -1045,11 +1100,12 @@ function tabAfterElement(x) {
 }
 
 function onTabUp() {
-  window.removeEventListener("pointermove", onTabMove);
+  removeTabListeners();
   if (!tabDrag) return;
+  if (tabDrag.lpTimer) clearTimeout(tabDrag.lpTimer);
   const d = tabDrag;
   tabDrag = null;
-  if (!d.active) return; // a click (switch/rename), not a drag
+  if (!d.active) return; // a tap (switch/rename), not a drag
 
   justTabDragged = true;
   setTimeout(() => (justTabDragged = false), 0);
@@ -1445,14 +1501,21 @@ function deleteChecklistItem(taskId, itemId) {
 /* ---------- Checklist reorder (drag handle, pointer-based) ---------- */
 let listDrag = null;
 
+function removeChecklistListeners() {
+  window.removeEventListener("pointermove", onChecklistMove);
+  window.removeEventListener("pointerup", onChecklistUp);
+  window.removeEventListener("pointercancel", onChecklistUp);
+}
+
 function onChecklistHandleDown(e, taskId, li) {
-  if (e.button !== 0 || e.pointerType !== "mouse") return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
   e.stopPropagation(); // keep the card itself from starting a drag
-  e.preventDefault();
+  e.preventDefault(); // the handle is for dragging — don't scroll/select (touch + mouse)
   listDrag = { taskId, li, ul: li.parentElement };
   li.classList.add("reordering");
   window.addEventListener("pointermove", onChecklistMove);
-  window.addEventListener("pointerup", onChecklistUp, { once: true });
+  window.addEventListener("pointerup", onChecklistUp);
+  window.addEventListener("pointercancel", onChecklistUp);
 }
 
 function onChecklistMove(e) {
@@ -1465,7 +1528,7 @@ function onChecklistMove(e) {
 }
 
 function onChecklistUp() {
-  window.removeEventListener("pointermove", onChecklistMove);
+  removeChecklistListeners();
   if (!listDrag) return;
   const { taskId, ul, li } = listDrag;
   li.classList.remove("reordering");
@@ -1498,43 +1561,90 @@ function autoGrow(textarea) {
 }
 
 /* =====================================================================
- * Drag & drop — custom pointer-based.
- * Holding the mouse button and moving drags the whole card (from anywhere on
- * it, including text fields); a plain click still edits. Mouse only, so touch/pen
- * list scrolling isn't hijacked.
+ * Drag & drop — custom pointer-based, works with mouse AND touch.
+ * Mouse: hold and move past a small threshold to drag the whole card (a plain
+ * click still edits). Touch: long-press a collapsed card to pick it up (moving
+ * before the press completes scrolls the list instead). Cards, columns and tabs
+ * all share this feel.
  * ===================================================================== */
 let drag = null;
 let justDragged = false;
-const DRAG_THRESHOLD = 5; // px before a hold becomes a drag
+const DRAG_THRESHOLD = 5; // px before a mouse hold becomes a drag
+const LONG_PRESS_MS = 300; // touch: hold (roughly still) this long to start dragging
+const TOUCH_SLOP = 12; // touch: moving more than this before the hold = a scroll, not a drag
+
+function isTouch(e) {
+  return e.pointerType !== "mouse";
+}
+function buzz() {
+  try {
+    if (navigator.vibrate) navigator.vibrate(10);
+  } catch (e) {
+    /* ignore */
+  }
+}
+function removeDragListeners() {
+  window.removeEventListener("pointermove", onDragMove);
+  window.removeEventListener("pointerup", onDragEnd);
+  window.removeEventListener("pointercancel", onDragEnd);
+}
 
 function onCardPointerDown(e, node, id) {
-  if (e.button !== 0 || e.pointerType !== "mouse") return;
-  // If pressing inside a text field you've already focused (caret active), let it
-  // select/copy/paste — don't hijack it for a card drag. Dragging a field you
-  // haven't clicked into still drags the card.
+  const touch = isTouch(e);
+  if (!touch) {
+    if (e.button !== 0) return;
+  } else {
+    // Touch: long-press to drag. Don't start on buttons (tap them) or on an
+    // already-open card (it's being read/edited — scroll it instead).
+    if (expandedCardId === id) return;
+    if (e.target.closest("button, .check, .delete-btn")) return;
+  }
+  // Mouse: if pressing inside a text field you've already focused (caret active),
+  // let it select/copy/paste instead of dragging.
   const field = e.target.closest("textarea, input[type='text']");
-  if (field && document.activeElement === field && !field.readOnly) return;
+  if (!touch && field && document.activeElement === field && !field.readOnly) return;
   justDragged = false;
   const rect = node.getBoundingClientRect();
   drag = {
     id,
     node,
     active: false,
+    touch,
     startX: e.clientX,
     startY: e.clientY,
     grabX: e.clientX - rect.left,
     grabY: e.clientY - rect.top,
     width: rect.width,
     height: rect.height,
+    lpTimer: null,
   };
+  if (touch) {
+    drag.lpTimer = setTimeout(() => {
+      if (drag && !drag.active) {
+        startLift();
+        buzz();
+      }
+    }, LONG_PRESS_MS);
+  }
   window.addEventListener("pointermove", onDragMove);
-  window.addEventListener("pointerup", onDragEnd, { once: true });
+  window.addEventListener("pointerup", onDragEnd);
+  window.addEventListener("pointercancel", onDragEnd);
 }
 
 function onDragMove(e) {
   if (!drag) return;
   if (!drag.active) {
-    if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+    const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+    if (drag.touch) {
+      // Moved before the long-press fired → the user is scrolling; let go.
+      if (dist > TOUCH_SLOP) {
+        clearTimeout(drag.lpTimer);
+        removeDragListeners();
+        drag = null;
+      }
+      return; // otherwise keep waiting for the press to complete
+    }
+    if (dist < DRAG_THRESHOLD) return;
     startLift();
   }
   e.preventDefault();
@@ -1574,11 +1684,12 @@ function updatePlaceholder(x, y) {
 }
 
 function onDragEnd(e) {
-  window.removeEventListener("pointermove", onDragMove);
+  removeDragListeners();
   if (!drag) return;
+  if (drag.lpTimer) clearTimeout(drag.lpTimer);
   const d = drag;
   drag = null;
-  if (!d.active) return; // a click, not a drag
+  if (!d.active) return; // a tap/click, not a drag
 
   e.preventDefault();
   justDragged = true;
