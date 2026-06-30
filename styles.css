@@ -742,7 +742,7 @@ body.tab-dragging-active { touch-action: none; }
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--hover-border);
+  border: 2px solid var(--muted); /* muted reads clearly on every theme (light + dark) */
   background: var(--surface);
   cursor: pointer;
   padding: 0;
