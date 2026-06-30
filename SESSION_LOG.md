@@ -1,5 +1,23 @@
 # Session Log
 
+## 2026-06-30 — Colour themes + confirmations
+
+### Migration confirmed
+- User ran `supabase-tabs.sql` on the correct project (`jyccdxemtaeegyuotyfz`); re-probed via REST → `boards.tabs` and `tasks.tab` both 200. Tabs now sync cross-device.
+
+### Carry-over (no change needed)
+- Confirmed (with a reproduction in preview) that checked-off (`completed`) tasks are already excluded from carry-over — both the button count and the action filter `!t.completed`. This has been true since the first version; user agreed it works as intended.
+
+### Colour themes (new)
+- **Small round palette button** (`#theme-btn`) at the left of the title block (left of the board name/dropdown). Click cycles 6 themes: Default, Sand, Mint, Rose, Lavender, Slate.
+- Themes are CSS-variable overrides on `html[data-theme="…"]` (neutral palette only — `--bg/--surface/--text/--muted/--border/--hover`; semantic accents unchanged). Added a `--hover` var and routed the pervasive `#eef2fb` hover colour through it so themes stay cohesive across header/columns/cards/tabs.
+- **Remembered per board, locally** (`localStorage boardThemes` = `{ boardId|"__local__": themeKey }`) — a personal view preference like the active tab / stacked view, applied on boot and on every board switch (`applyBoardTheme()` in `setUser`/`switchBoard`). Not synced across devices/members (would need a `boards.theme` column — deferred).
+
+### Security Q (answered, no change)
+- Reviewed RLS: strangers with just the app URL + their own login can't see/edit a user's data (they get their own board). Board access is **capability-based** via the share link (board id) — anyone signed-in who has a board's id can join and fully edit its tasks (no read-only mode; owner can't kick members from the UI). Board ids are random UUIDs. Offered read-only-share / remove-member as future work.
+
+---
+
 ## 2026-06-29 — Per-board tabs
 
 ### Accomplished

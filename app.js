@@ -1836,6 +1836,7 @@ async function setUser(nextUser) {
   }
   renderAuthBar();
   renderBoardControls();
+  applyBoardTheme();
   render();
 }
 
@@ -1939,6 +1940,7 @@ async function switchBoard(id) {
   loadTabsForBoard();
   await pullRemote(false);
   renderBoardControls();
+  applyBoardTheme();
   render();
 }
 
@@ -2351,6 +2353,50 @@ applyView();
 
 document.getElementById("add-category").addEventListener("click", addCategory);
 document.getElementById("add-tab").addEventListener("click", addTab);
+
+/* ---------- Colour theme (per board, cycled with the palette button) ----------
+ * Remembered per board locally (a personal view preference, like the active
+ * tab) so each board reopens in the colour it was left on. */
+const THEMES = ["default", "sand", "mint", "rose", "lavender", "slate"];
+const THEME_LABELS = { default: "Default", sand: "Sand", mint: "Mint", rose: "Rose", lavender: "Lavender", slate: "Slate" };
+
+function themeBoardKey() {
+  return user && currentBoardId ? currentBoardId : "__local__";
+}
+function loadBoardThemes() {
+  try {
+    return JSON.parse(localStorage.getItem("boardThemes")) || {};
+  } catch (e) {
+    return {};
+  }
+}
+function currentBoardTheme() {
+  return loadBoardThemes()[themeBoardKey()] || "default";
+}
+function applyTheme(key) {
+  const root = document.documentElement;
+  if (!key || key === "default") delete root.dataset.theme;
+  else root.dataset.theme = key;
+  const btn = document.getElementById("theme-btn");
+  if (btn) btn.title = `Theme: ${THEME_LABELS[key] || "Default"} — click to change`;
+}
+function applyBoardTheme() {
+  applyTheme(currentBoardTheme());
+}
+function cycleTheme() {
+  const next = THEMES[(THEMES.indexOf(currentBoardTheme()) + 1) % THEMES.length];
+  const all = loadBoardThemes();
+  if (next === "default") delete all[themeBoardKey()];
+  else all[themeBoardKey()] = next;
+  try {
+    localStorage.setItem("boardThemes", JSON.stringify(all));
+  } catch (e) {
+    /* ignore */
+  }
+  applyTheme(next);
+}
+document.getElementById("theme-btn").addEventListener("click", cycleTheme);
+applyBoardTheme();
 
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
