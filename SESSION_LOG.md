@@ -1,5 +1,14 @@
 # Session Log
 
+## 2026-06-30 — Board switcher on mobile
+
+### Fix: board header dropdown unusable on touch
+- Two root causes: (1) the ▾ switch was a tiny 25×24 target and tapping the board *name* opened an inline rename (awkward on touch); (2) the switcher menu's action buttons (`.board-menu-action` rename/delete/leave) are `opacity:0` until `:hover`, so on touch they were invisible/untappable.
+- **Fix**: on phones (`window.innerWidth<=600`) or for non-owners, tapping the board **name** now opens the switcher (big target); desktop owner keeps inline rename. Added a **rename pencil** to the current owned board's menu row (reuses `startRename` on the header name button) so mobile users can still rename. Enlarged `.board-switch` on mobile. Revealed hover-only action buttons (`.board-menu-action`, `.col-delete`, `.tab-delete`, card `.delete-btn`, `.checklist-del`) via `@media (max-width:760px),(hover:none)` so category/tab/task deletes are tappable on touch too.
+- Verified (mocked signed-in at 375px): name-tap opens menu, rename pencil + delete visible and working, board switch works; desktop unchanged (name→inline rename, ▾→menu, actions hover-revealed). No console errors.
+
+---
+
 ## 2026-06-30 — Mobile layout pass
 
 ### Mobile usability (touch drag already shipped earlier)

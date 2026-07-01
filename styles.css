@@ -273,6 +273,7 @@ html[data-theme="matrix"] {
 .board-menu-action:focus { opacity: 1; }
 .board-menu-action.delete:hover { background: #fde8e8; color: #ef4444; }
 .board-menu-action.leave:hover { background: var(--hover); color: var(--text); }
+.board-menu-action.rename:hover { background: var(--hover); color: var(--text); }
 
 .board-menu-divider { height: 1px; background: var(--border); margin: 6px 4px; }
 
@@ -1258,4 +1259,17 @@ body { padding-bottom: 46px; }
   /* Keyboard shortcuts are desktop-only; reclaim the space on touch. */
   .app-footer { display: none; }
   body { padding-bottom: 0; }
+
+  /* Bigger, clearer board switcher target. */
+  .board-switch { padding: 6px 10px; font-size: 1.15rem; }
+}
+
+/* Touch devices have no hover, so controls that are revealed on hover would be
+   invisible/untappable. Keep them visible when narrow OR on a touch screen. */
+@media (max-width: 760px), (hover: none) {
+  .board-menu-action,
+  .col-delete,
+  .tab-delete,
+  .card .delete-btn,
+  .checklist-del { opacity: 0.55; }
 }

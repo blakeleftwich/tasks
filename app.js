@@ -2093,17 +2093,24 @@ function renderBoardControls() {
 
   const current = boards.find((b) => b.id === currentBoardId);
   const owned = !!(current && current.owner_id === user.id);
+  const toggleBoardMenu = () => {
+    const m = document.getElementById("board-menu");
+    if (m) m.hidden = !m.hidden;
+  };
+  const onPhone = () => window.innerWidth <= 600;
 
-  // Board name as the heading — click to rename (owner only).
+  // Board name as the heading. Desktop owner: click to rename. On phones (or for
+  // non-owners) the whole name is the switcher's tap target — rename moves into
+  // the menu, since an inline rename field is awkward on touch.
   const nameBtn = document.createElement("button");
   nameBtn.className = "board-name" + (owned ? "" : " not-owner");
   nameBtn.textContent = current ? current.name : "Board";
-  if (owned) {
-    nameBtn.title = "Click to rename";
-    nameBtn.addEventListener("click", () => startRename(nameBtn, current));
-  } else {
-    nameBtn.disabled = true;
-  }
+  nameBtn.title = owned ? "Rename board (opens the board switcher on mobile)" : "Switch board";
+  nameBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (owned && !onPhone()) startRename(nameBtn, current);
+    else toggleBoardMenu();
+  });
   wrap.appendChild(nameBtn);
 
   // Down arrow — open the board switcher.
@@ -2113,8 +2120,7 @@ function renderBoardControls() {
   switchBtn.setAttribute("aria-label", "Switch board");
   switchBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const menu = document.getElementById("board-menu");
-    if (menu) menu.hidden = !menu.hidden;
+    toggleBoardMenu();
   });
   wrap.appendChild(switchBtn);
 
@@ -2148,6 +2154,21 @@ function renderBoardControls() {
         switchBoard(b.id);
       });
       item.appendChild(pick);
+
+      // Rename the current board from the menu (the mobile rename path; also handy
+      // on desktop). Reuses the inline rename on the header name button.
+      if (b.id === currentBoardId && b.owner_id === user.id) {
+        const ren = document.createElement("button");
+        ren.className = "board-menu-action rename";
+        ren.title = "Rename board";
+        ren.innerHTML = TAG_PENCIL;
+        ren.addEventListener("click", (e) => {
+          e.stopPropagation();
+          menu.hidden = true;
+          startRename(nameBtn, current);
+        });
+        item.appendChild(ren);
+      }
 
       // Last remaining board can't be removed.
       if (boards.length > 1) {
