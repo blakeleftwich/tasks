@@ -24,12 +24,22 @@ let activeTabKey = null;
 let categories = []; // === activeTab().columns (reassigned on every tab switch)
 const categoryKeys = () => categories.map((c) => c.key);
 
-function makeTab(label, columns) {
+// The first/default tab of every board uses a FIXED key (not a random one), so
+// all clients, devices and reloads agree on it. This is critical: a task stores
+// its owning tab's key, and if that key were random-per-load, tasks would appear
+// to vanish whenever the key changed (across a reload, device, or shared user).
+const DEFAULT_TAB_KEY = "default";
+
+function makeTab(label, columns, key) {
   return {
-    key: makeId(),
+    key: key || makeId(),
     label: label || "New tab",
     columns: Array.isArray(columns) && columns.length ? columns : DEFAULT_CATEGORIES.map((c) => ({ ...c })),
   };
+}
+// The default tab (first tab of a board) — always the same stable key.
+function defaultTab(columns) {
+  return makeTab("To-Do", columns, DEFAULT_TAB_KEY);
 }
 
 // New boards / new tabs start with a single blank category (user preference).
@@ -56,13 +66,21 @@ function activeTab() {
 function activeTabIsFirst() {
   return tabs.length > 0 && activeTab() === tabs[0];
 }
+// A task's home tab: its own tab if that tab still exists, otherwise the FIRST
+// tab. So a task is never hidden just because its tab key is unknown — null
+// legacy tasks, or a key stamped by a divergent client/reload, surface in the
+// first tab instead of vanishing. This is the core "never lose a task" net.
+function taskBelongsToTab(t) {
+  if (t.tab && tabs.some((tab) => tab.key === t.tab)) return t.tab;
+  return tabs[0] ? tabs[0].key : null;
+}
 function inActiveTab(t) {
-  return t.tab === activeTabKey || (activeTabIsFirst() && !t.tab);
+  return taskBelongsToTab(t) === activeTabKey;
 }
 
 // Point `categories` at the active tab's columns; repair any empty/invalid state.
 function syncActiveCategories() {
-  if (!tabs.length) tabs = [makeTab("To-Do")];
+  if (!tabs.length) tabs = [defaultTab()];
   if (!activeTab()) activeTabKey = tabs[0].key;
   const t = activeTab();
   if (!Array.isArray(t.columns) || !t.columns.length) t.columns = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
@@ -71,7 +89,7 @@ function syncActiveCategories() {
 
 // Wrap a board's existing flat `columns` array into a single default tab.
 function tabsFromColumns(columns) {
-  return [makeTab("To-Do", Array.isArray(columns) && columns.length ? columns : null)];
+  return [defaultTab(Array.isArray(columns) && columns.length ? columns : null)];
 }
 
 function loadLocalTabs() {
@@ -98,7 +116,7 @@ function loadLocalTabs() {
   // No saved categories: keep canonical columns only if legacy tasks need them,
   // otherwise start fresh with a single category.
   if (!cols) cols = hasLegacyTasks() ? DEFAULT_CATEGORIES.map((c) => ({ ...c })) : defaultColumns();
-  tabs = [makeTab("To-Do", cols)];
+  tabs = [defaultTab(cols)];
   activeTabKey = tabs[0].key;
   syncActiveCategories();
   saveLocalTabs(); // persist now so the generated keys stay stable across reloads/re-loads
@@ -245,6 +263,21 @@ function saveLocal() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks }));
   } catch (e) {
     console.error("Could not save locally.", e);
+  }
+}
+
+// Safety snapshot: keep the last non-empty task set per board in a separate key,
+// so a transient sync glitch (or an accidental wipe) can never make data
+// unrecoverable. Restore with window.restoreTasksBackup().
+const BACKUPS_KEY = "taskManager.backups.v1";
+function backupTasks(boardId, arr) {
+  if (!Array.isArray(arr) || !arr.length) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(BACKUPS_KEY) || "{}");
+    all[boardId || "__local__"] = { at: nowIso(), tasks: arr };
+    localStorage.setItem(BACKUPS_KEY, JSON.stringify(all));
+  } catch (e) {
+    /* ignore quota */
   }
 }
 
@@ -454,6 +487,12 @@ function persistCategories() {
 }
 
 function persistTabs() {
+  // Never overwrite a board's tabs with an empty/degenerate set (would wipe
+  // everyone's columns). If state looks broken, repair it before saving.
+  if (!Array.isArray(tabs) || !tabs.length) {
+    syncActiveCategories();
+    if (!tabs.length) return;
+  }
   if (supa && user && currentBoardId) {
     const b = boards.find((x) => x.id === currentBoardId);
     const activeCols = activeTab() ? activeTab().columns : categories;
@@ -487,7 +526,7 @@ function loadTabsForBoard() {
   } else if (b && Array.isArray(b.columns) && b.columns.length) {
     tabs = tabsFromColumns(b.columns); // wrap an existing single-set board into one tab
   } else {
-    tabs = [makeTab("To-Do")];
+    tabs = [defaultTab()];
   }
   activeTabKey = tabs[0].key;
   syncActiveCategories();
@@ -883,17 +922,26 @@ const tabBar = document.getElementById("tab-bar");
 
 // Pin any legacy tasks that predate the `tab` field to the first tab, so the
 // "first tab owns untagged tasks" rule survives tab reordering.
+// Re-home tasks that have no tab (legacy) OR a tab key that matches no current
+// tab (e.g. stamped by an older buggy build or a divergent client) onto the
+// first tab, and persist the repair so it sticks for everyone. This both
+// prevents future loss and RECOVERS tasks that a key mismatch had hidden.
 function adoptOrphanTasks() {
   if (!tabs.length) return;
+  const known = new Set(tabs.map((t) => t.key));
   const firstKey = tabs[0].key;
-  let changed = false;
+  const healed = [];
   tasks.forEach((t) => {
-    if (!t.tab) {
+    if ((!t.tab || !known.has(t.tab)) && t.tab !== firstKey) {
       t.tab = firstKey;
-      changed = true;
+      t.updated_at = nowIso();
+      healed.push(t);
     }
   });
-  if (changed) saveLocal();
+  if (healed.length) {
+    saveLocal();
+    if (supa && user && currentBoardId) persist(healed); // fix it in the cloud too
+  }
 }
 
 function renderTabs() {
@@ -960,8 +1008,8 @@ function addTab() {
 
 async function deleteTab(tab) {
   if (tabs.length <= 1) return; // keep at least one
-  const wasFirst = tabs[0] === tab;
-  const doomed = tasks.filter((t) => t.tab === tab.key || (wasFirst && !t.tab));
+  // Everything currently shown in this tab (including orphans homed here).
+  const doomed = tasks.filter((t) => taskBelongsToTab(t) === tab.key);
   const ok = await confirmModal({
     title: "Delete tab?",
     message: doomed.length
@@ -1882,7 +1930,14 @@ async function ensurePersonalBoard() {
     console.error("Could not create personal board:", error.message);
     return;
   }
-  await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
+  const { error: memErr } = await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
+  if (memErr) {
+    // Without membership the board is invisible (RLS) — roll it back so we retry
+    // cleanly next load instead of stranding it.
+    console.error("Could not join personal board:", memErr.message);
+    await supa.from("boards").delete().eq("id", board.id);
+    return;
+  }
   boards.push(board);
 }
 
@@ -1959,10 +2014,19 @@ async function createBoard() {
   const { error } = await supa.from("boards").insert(board);
   if (error) {
     console.error("Could not create board:", error.message);
+    alert("Could not create the board — please try again.");
     return;
   }
-  await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
-  board.tabs = [makeTab("To-Do", defaultColumns())]; // new boards start with one category
+  // The membership row is what makes the board visible (RLS). If it fails the
+  // board would exist but be invisible on reload — roll it back instead.
+  const { error: memErr } = await supa.from("board_members").insert({ board_id: board.id, user_id: user.id });
+  if (memErr) {
+    console.error("Could not join the new board:", memErr.message);
+    await supa.from("boards").delete().eq("id", board.id);
+    alert("Could not create the board — please try again.");
+    return;
+  }
+  board.tabs = [defaultTab(defaultColumns())]; // new boards start with one category (stable key)
   boards.push(board);
   await switchBoard(board.id);
   persistTabs(); // save the initial single-category tab to this new board
@@ -1995,10 +2059,46 @@ async function pullRemote(maybeMigrate) {
     saveLocal();
     return;
   }
+  // Snapshot the current (last-known-good) tasks before replacing them, so an
+  // unexpectedly-empty remote result can never silently erase a board.
+  if (tasks.length) backupTasks(currentBoardId, tasks);
+  if (data.length === 0 && tasks.length > 0) {
+    console.warn(`Remote returned 0 tasks for board ${currentBoardId} but ${tasks.length} were local; backed up. Run restoreTasksBackup() to recover if this was unexpected.`);
+  }
   tasks = data.map(taskFromRow);
-  adoptOrphanTasks(); // pin pre-migration rows (no `tab`) to the first tab
+  adoptOrphanTasks(); // re-home null/orphaned tab keys onto the first tab
   saveLocal();
 }
+
+// Manual recovery lever: re-add any tasks from the local backup that are missing
+// from the current board, and push them back to the cloud.
+window.restoreTasksBackup = function restoreTasksBackup() {
+  try {
+    const all = JSON.parse(localStorage.getItem(BACKUPS_KEY) || "{}");
+    const snap = all[currentBoardId || "__local__"];
+    if (!snap || !Array.isArray(snap.tasks) || !snap.tasks.length) {
+      console.warn("No task backup found for this board.");
+      return 0;
+    }
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const restored = [];
+    snap.tasks.map(normalizeTask).forEach((t) => {
+      if (!byId.has(t.id)) {
+        byId.set(t.id, t);
+        restored.push(t);
+      }
+    });
+    tasks = [...byId.values()];
+    saveLocal();
+    if (restored.length && supa && user && currentBoardId) persist(restored);
+    render();
+    console.log(`Restored ${restored.length} task(s) from backup taken ${snap.at}.`);
+    return restored.length;
+  } catch (e) {
+    console.error("Restore failed:", e);
+    return 0;
+  }
+};
 
 let realtimeChannel = null;
 function subscribeRealtime() {

@@ -1,5 +1,25 @@
 # Session Log
 
+## 2026-07-02 — Data-loss fix: tab-key divergence (tasks "disappearing")
+
+### Root cause (confirmed)
+- The first/default tab's key was generated with `makeId()` (random) **every time** a board loaded without a persisted `boards.tabs` (i.e. any board where the owner never edited tabs/columns — the common case). So each **reload / device / shared user** produced a *different* key. Creating or editing a task stamps it with that session's key, and `inActiveTab()` **hid** any task whose `tab` didn't match the current key. Result: tasks weren't deleted — they were **hidden**, and diverging keys progressively hid everything on shared boards and across reloads. (Good news: the data was recoverable, since it was a display filter, not a delete.)
+
+### Fixes (app.js)
+- **A. Deterministic key**: `DEFAULT_TAB_KEY = "default"`; `defaultTab()` gives the first/default tab this fixed key everywhere it's generated (`tabsFromColumns`, `loadTabsForBoard` fallback, `loadLocalTabs` migration, `syncActiveCategories`, `createBoard`). `makeTab` now takes an optional key; addTab still uses a random unique key for 2nd+ tabs (those get shared via `boards.tabs`, owner-persisted). Boards that already persisted a random first-tab key keep it (authoritative) — deterministic key only affects freshly-generated defaults.
+- **B. Never-hide net**: `taskBelongsToTab(t)` returns the task's tab if it still exists, else the **first tab** — so a task with a null/unknown key surfaces in the first tab instead of vanishing. `inActiveTab` and `deleteTab` now use it.
+- **C. Heal + recover**: `adoptOrphanTasks()` re-homes null/unknown-tab tasks onto the first tab **and persists** the repair (cloud too), so already-hidden tasks reappear and the fix sticks for all members/devices. Converges everyone to one key with no realtime storm (healed rows already match → no re-write).
+- **D. Guards**: `createBoard`/`ensurePersonalBoard` now check the `board_members` insert and roll back the orphan board on failure (a failed membership row made a board invisible via RLS — a cause of "made a board, can't find it"). `persistTabs` refuses to write an empty/degenerate tab set.
+- **F. Backups**: `pullRemote` snapshots the last non-empty task set to `taskManager.backups.v1` before replacing (so an unexpectedly-empty remote can't erase a board), warns in console when it happens, and exposes `window.restoreTasksBackup()` to re-add missing tasks + re-sync.
+
+### Verified (preview, mocked)
+Tasks stamped random/unknown keys + null all heal to `default` and render (were hidden before); multi-tab: unknown-key task shows in first tab while valid 2nd-tab task stays put; backup restore re-adds a wiped set (3→0→3); fresh boot key stable across reloads; no console errors.
+
+### Known limitation (noted, not fixed here)
+- Non-owners can't persist **tab/column structure** changes on a shared board (RLS: only owner updates `boards.tabs`) — such edits stay local and won't survive their reload. Tasks are unaffected (members can write tasks; healing covers them). Owner-only structure matches the existing tag-definition behavior. Could add local-overlay or owner-only affordance later.
+
+---
+
 ## 2026-06-30 — Board switcher on mobile
 
 ### Fix: board header dropdown unusable on touch
