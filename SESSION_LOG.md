@@ -1,5 +1,23 @@
 # Session Log
 
+## 2026-07-03 — Terminology + layout overhaul; carry-over → show-completed
+
+### Terminology (user-facing strings only; DB/vars unchanged)
+- **"Category" → "Task Set"**, **"board" → "Project"**, app/default title **"Daily Task Board" → "New Project"**. Default labels: single category "To Do" → **"New Task Set"**; default/new tab "To-Do"/"New tab" → **"New Tab"**. Updated all buttons, confirm modals, titles, aria-labels, prompts, alerts in `index.html` + `app.js`. `currentBoardName()` default is now "New Project" (and `render()`'s document.title check matches).
+
+### Button placement
+- **"+ Tab"** now renders at the **end of the tab row** (convention), not the toolbar. `renderTabs()` appends it; tab-drag placeholder inserts before it.
+- **"+ Task Set"** is now a **dashed tile at the end of the board**: slim (44px) on the right in column mode so it doesn't shift columns, full-width with label below the columns in stack mode. Rendered in `render()`.
+- **Board converted from CSS grid → flex** so the add tile can be slim (grid forced every item to a 280px track). `.column { flex: 1 1 280px }`; stacked = `flex-direction:column`; mobile column basis 150px. Column-drag `onColumnMove` inserts the placeholder before `.add-taskset`. Toolbar-right no longer holds the add buttons.
+
+### Carry-over removed → show-completed toggle
+- Deleted `carryOver()`/`renderCarryOver()`/the carry button + listener. **Checked-off tasks are now hidden by default**; a **"Show checked off (N)" / "Hide checked off (N)"** toggle sits on the **right of the search row** (`#toggle-completed`, in `.toolbar-right`), shown only when there are completed items (or they're showing). `showCompleted` persisted in localStorage; `isVisibleTask()` gates render + keyboard nav (NOT `group()`, so positions/counts stay whole).
+
+### Verified (preview, desktop + mobile, both views)
+Renames render; +Tab last in row; slim tile right (col) / full-width (stack); check-circle hides a task; toggle shows/hides + count; column drag works with flex board + tile stays last; add-tile and add-tab create; no horizontal overflow; no console errors.
+
+---
+
 ## 2026-07-02 — Data-loss fix: tab-key divergence (tasks "disappearing")
 
 ### Root cause (confirmed)

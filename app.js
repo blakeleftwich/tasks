@@ -39,12 +39,12 @@ function makeTab(label, columns, key) {
 }
 // The default tab (first tab of a board) — always the same stable key.
 function defaultTab(columns) {
-  return makeTab("To-Do", columns, DEFAULT_TAB_KEY);
+  return makeTab("New Tab", columns, DEFAULT_TAB_KEY);
 }
 
 // New boards / new tabs start with a single blank category (user preference).
 function defaultColumns() {
-  return [{ key: makeId(), label: "To Do" }];
+  return [{ key: makeId(), label: "New Task Set" }];
 }
 
 // Did this browser already have tasks before tabs existed? If so, the migrated
@@ -454,26 +454,6 @@ function moveTaskTo(id, toStatus, beforeId) {
   render();
 }
 
-function carryOver() {
-  const today = todayKey();
-  const pending = tasks.filter((t) => t.day < today && !t.completed && inActiveTab(t));
-  if (!pending.length) return;
-  if (!confirm(`Carry over ${pending.length} unfinished task${pending.length === 1 ? "" : "s"} to today?`)) return;
-
-  pending.forEach((t) => {
-    t.day = today;
-    t.updated_at = nowIso();
-  });
-  // Re-pack positions for each category that received carried-over tasks.
-  const changed = new Map(pending.map((t) => [t.id, t]));
-  [...new Set(pending.map((t) => t.status))].forEach((s) => reindex(today, s).forEach((t) => changed.set(t.id, t)));
-  selectedDate = today;
-  saveLocal();
-  persist([...changed.values()]);
-  flipNextRender = true;
-  render();
-}
-
 /* =====================================================================
  * Rendering
  * ===================================================================== */
@@ -533,7 +513,7 @@ function loadTabsForBoard() {
 }
 
 function addCategory() {
-  const cat = { key: makeId(), label: "New category" };
+  const cat = { key: makeId(), label: "New Task Set" };
   categories.push(cat);
   persistCategories();
   render();
@@ -547,10 +527,10 @@ async function deleteCategory(cat) {
   const remaining = categories.filter((c) => c.key !== cat.key);
   const affected = tasks.filter((t) => t.status === cat.key && inActiveTab(t));
   const ok = await confirmModal({
-    title: "Delete category?",
+    title: "Delete task set?",
     message: affected.length
       ? `Delete “${cat.label}”? Its ${affected.length} task${affected.length === 1 ? "" : "s"} will move to “${remaining[0].label}”.`
-      : `Delete the empty category “${cat.label}”?`,
+      : `Delete the empty task set “${cat.label}”?`,
     confirmLabel: "Delete",
   });
   if (!ok) return;
@@ -742,7 +722,7 @@ async function deleteTag(task, tag) {
   if (users.length) {
     const ok = await confirmModal({
       title: "Delete tag?",
-      message: `Delete “${tag.label}”? It will be removed from ${users.length} task${users.length === 1 ? "" : "s"} in this category.`,
+      message: `Delete “${tag.label}”? It will be removed from ${users.length} task${users.length === 1 ? "" : "s"} in this task set.`,
       confirmLabel: "Delete",
     });
     if (!ok) return;
@@ -850,7 +830,8 @@ function onColumnMove(e) {
   colDrag.clone.style.left = e.clientX - colDrag.grabX + "px";
   colDrag.clone.style.top = e.clientY - colDrag.grabY + "px";
   const after = columnAfterElement(e.clientX);
-  if (after == null) board.appendChild(colDrag.placeholder);
+  const addTile = board.querySelector(".add-taskset");
+  if (after == null) board.insertBefore(colDrag.placeholder, addTile);
   else board.insertBefore(colDrag.placeholder, after);
 }
 
@@ -980,6 +961,16 @@ function renderTabs() {
     el.addEventListener("pointerdown", (e) => onTabPointerDown(e, el));
     tabBar.appendChild(el);
   });
+
+  // "+ Tab" at the end of the row (the expected place for a new-tab affordance).
+  const add = document.createElement("button");
+  add.className = "tab-add";
+  add.type = "button";
+  add.title = "Add a tab";
+  add.setAttribute("aria-label", "Add a tab");
+  add.textContent = "+ Tab";
+  add.addEventListener("click", addTab);
+  tabBar.appendChild(add);
 }
 
 function switchTab(key) {
@@ -995,7 +986,7 @@ function switchTab(key) {
 
 function addTab() {
   // Start with a single blank category; fresh keys keep it independent of other tabs.
-  const tab = makeTab("New tab", defaultColumns());
+  const tab = makeTab("New Tab", defaultColumns());
   tabs.push(tab);
   activeTabKey = tab.key;
   syncActiveCategories();
@@ -1118,7 +1109,8 @@ function onTabMove(e) {
   tabDrag.clone.style.left = e.clientX - tabDrag.grabX + "px";
   tabDrag.clone.style.top = e.clientY - tabDrag.grabY + "px";
   const after = tabAfterElement(e.clientX);
-  if (after == null) tabBar.appendChild(tabDrag.placeholder);
+  const addBtn = tabBar.querySelector(".tab-add");
+  if (after == null) tabBar.insertBefore(tabDrag.placeholder, addBtn);
   else tabBar.insertBefore(tabDrag.placeholder, after);
 }
 
@@ -1185,15 +1177,15 @@ function render() {
   const beforeFlip = flipNextRender ? snapshotCards() : null;
   const boardTitle = currentBoardName();
   document.getElementById("app-title").textContent = boardTitle;
-  document.title = boardTitle === "Daily Task Board" ? boardTitle : `${boardTitle} · Daily Task Board`;
+  document.title = boardTitle === "New Project" ? boardTitle : `${boardTitle} · New Project`;
   document.getElementById("date-display").textContent = formatHeaderDate(selectedDate);
   document.getElementById("date-picker").value = selectedDate;
   renderTabs();
-  renderCarryOver();
+  renderCompletedToggle();
 
   board.innerHTML = "";
   categories.forEach((col, index) => {
-    const items = group(selectedDate, col.key).filter(matchesSearch);
+    const items = group(selectedDate, col.key).filter(isVisibleTask);
 
     const column = document.createElement("section");
     column.className = "column";
@@ -1203,7 +1195,7 @@ function render() {
         <span class="dot"></span>
         <button class="column-name" type="button" title="Click to rename"></button>
         <span class="count">${items.length}</span>
-        <button class="col-delete" type="button" title="Delete category" aria-label="Delete category">×</button>
+        <button class="col-delete" type="button" title="Delete task set" aria-label="Delete task set">×</button>
       </div>
       <div class="card-list"></div>
       <div class="add-row"><input class="add-input" type="text" placeholder="+ Add a task…" aria-label="Add a task" /></div>
@@ -1242,6 +1234,17 @@ function render() {
     board.appendChild(column);
   });
 
+  // "+ Task Set" tile at the end of the board — slim to the right in column mode,
+  // full width below in stack mode (styled in CSS).
+  const addTile = document.createElement("button");
+  addTile.className = "add-taskset";
+  addTile.type = "button";
+  addTile.title = "Add task set";
+  addTile.setAttribute("aria-label", "Add task set");
+  addTile.innerHTML = `<span class="ats-plus">+</span><span class="ats-label">New Task Set</span>`;
+  addTile.addEventListener("click", addCategory);
+  board.appendChild(addTile);
+
   // Size auto-growing fields of expanded cards now that they're in the DOM.
   board.querySelectorAll(".card.expanded .card-notes, .card.expanded .checklist-text").forEach(autoGrow);
 
@@ -1249,16 +1252,19 @@ function render() {
   flipNextRender = false;
 }
 
-function renderCarryOver() {
-  const btn = document.getElementById("carry-over");
-  const today = todayKey();
-  const count = tasks.filter((t) => t.day < today && !t.completed && inActiveTab(t)).length;
-  if (selectedDate === today && count > 0) {
-    btn.hidden = false;
-    btn.textContent = `↪ Carry over ${count} unfinished task${count === 1 ? "" : "s"}`;
-  } else {
+// Show/hide checked-off tasks. The toggle lives on the right of the search row
+// and only appears when there are completed tasks in view (or they're showing).
+function renderCompletedToggle() {
+  const btn = document.getElementById("toggle-completed");
+  if (!btn) return;
+  const doneCount = tasks.filter((t) => t.day === selectedDate && inActiveTab(t) && t.completed).length;
+  if (doneCount === 0 && !showCompleted) {
     btn.hidden = true;
+    return;
   }
+  btn.hidden = false;
+  btn.classList.toggle("active", showCompleted);
+  btn.textContent = showCompleted ? `Hide checked off (${doneCount})` : `Show checked off (${doneCount})`;
 }
 
 function renderCard(task) {
@@ -1902,7 +1908,7 @@ function currentBoardName() {
     const b = boards.find((x) => x.id === currentBoardId);
     if (b) return b.name;
   }
-  return "Daily Task Board";
+  return "New Project";
 }
 
 function isPersonalBoard(id) {
@@ -2008,13 +2014,13 @@ async function switchBoard(id) {
 }
 
 async function createBoard() {
-  const name = (window.prompt("Name this board:", "New board") || "").trim();
+  const name = (window.prompt("Name this project:", "New project") || "").trim();
   if (!name) return;
   const board = { id: makeId(), name, owner_id: user.id };
   const { error } = await supa.from("boards").insert(board);
   if (error) {
     console.error("Could not create board:", error.message);
-    alert("Could not create the board — please try again.");
+    alert("Could not create the project — please try again.");
     return;
   }
   // The membership row is what makes the board visible (RLS). If it fails the
@@ -2023,7 +2029,7 @@ async function createBoard() {
   if (memErr) {
     console.error("Could not join the new board:", memErr.message);
     await supa.from("boards").delete().eq("id", board.id);
-    alert("Could not create the board — please try again.");
+    alert("Could not create the project — please try again.");
     return;
   }
   board.tabs = [defaultTab(defaultColumns())]; // new boards start with one category (stable key)
@@ -2204,8 +2210,8 @@ function renderBoardControls() {
   // the menu, since an inline rename field is awkward on touch.
   const nameBtn = document.createElement("button");
   nameBtn.className = "board-name" + (owned ? "" : " not-owner");
-  nameBtn.textContent = current ? current.name : "Board";
-  nameBtn.title = owned ? "Rename board (opens the board switcher on mobile)" : "Switch board";
+  nameBtn.textContent = current ? current.name : "Project";
+  nameBtn.title = owned ? "Rename project (opens the project switcher on mobile)" : "Switch project";
   nameBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (owned && !onPhone()) startRename(nameBtn, current);
@@ -2217,7 +2223,7 @@ function renderBoardControls() {
   const switchBtn = document.createElement("button");
   switchBtn.className = "board-switch";
   switchBtn.textContent = "▾";
-  switchBtn.setAttribute("aria-label", "Switch board");
+  switchBtn.setAttribute("aria-label", "Switch project");
   switchBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleBoardMenu();
@@ -2227,7 +2233,7 @@ function renderBoardControls() {
   const shareBtn = document.createElement("button");
   shareBtn.className = "ghost-btn";
   shareBtn.textContent = "🔗 Share";
-  shareBtn.title = "Copy a link that lets a teammate join this board";
+  shareBtn.title = "Copy a link that lets a teammate join this project";
   shareBtn.addEventListener("click", () => shareBoard(shareBtn));
   wrap.appendChild(shareBtn);
 
@@ -2260,7 +2266,7 @@ function renderBoardControls() {
       if (b.id === currentBoardId && b.owner_id === user.id) {
         const ren = document.createElement("button");
         ren.className = "board-menu-action rename";
-        ren.title = "Rename board";
+        ren.title = "Rename project";
         ren.innerHTML = TAG_PENCIL;
         ren.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -2275,7 +2281,7 @@ function renderBoardControls() {
         const isOwner = b.owner_id === user.id;
         const action = document.createElement("button");
         action.className = "board-menu-action " + (isOwner ? "delete" : "leave");
-        action.title = isOwner ? "Delete board" : "Leave board";
+        action.title = isOwner ? "Delete project" : "Leave project";
         action.innerHTML = isOwner ? TRASH : EXIT;
         action.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -2294,7 +2300,7 @@ function renderBoardControls() {
 
   const addRow = document.createElement("button");
   addRow.className = "board-menu-new";
-  addRow.textContent = "+ New board";
+  addRow.textContent = "+ New project";
   addRow.addEventListener("click", () => {
     menu.hidden = true;
     createBoard();
@@ -2306,9 +2312,9 @@ function renderBoardControls() {
 
 async function deleteBoard(board) {
   const ok = await confirmModal({
-    title: "Delete board?",
+    title: "Delete project?",
     message: `“${board.name}” and all its tasks will be permanently deleted for everyone on it.`,
-    confirmLabel: "Delete board",
+    confirmLabel: "Delete project",
   });
   if (!ok) return;
   const { error } = await supa.from("boards").delete().eq("id", board.id);
@@ -2321,9 +2327,9 @@ async function deleteBoard(board) {
 
 async function leaveBoard(board) {
   const ok = await confirmModal({
-    title: "Leave board?",
+    title: "Leave project?",
     message: `You'll be removed from “${board.name}”. Its tasks stay for everyone else.`,
-    confirmLabel: "Leave board",
+    confirmLabel: "Leave project",
   });
   if (!ok) return;
   const { error } = await supa.from("board_members").delete().eq("board_id", board.id).eq("user_id", user.id);
@@ -2413,8 +2419,14 @@ function matchesSearch(task) {
   return (task.title + " " + (task.notes || "")).toLowerCase().includes(searchQuery);
 }
 
+// Whether a task shows in the board right now: matches search AND (not checked
+// off, unless the user has chosen to show checked-off items).
+function isVisibleTask(task) {
+  return matchesSearch(task) && (showCompleted || !task.completed);
+}
+
 function visibleColumn(status) {
-  return group(selectedDate, status).filter(matchesSearch);
+  return group(selectedDate, status).filter(isVisibleTask);
 }
 
 function moveSelection(dx, dy) {
@@ -2480,8 +2492,13 @@ document.getElementById("view-toggle").addEventListener("click", () => {
 });
 applyView();
 
-document.getElementById("add-category").addEventListener("click", addCategory);
-document.getElementById("add-tab").addEventListener("click", addTab);
+// Show / hide checked-off tasks (a local preference; tasks stay, just hidden).
+let showCompleted = localStorage.getItem("showCompleted") === "1";
+document.getElementById("toggle-completed").addEventListener("click", () => {
+  showCompleted = !showCompleted;
+  localStorage.setItem("showCompleted", showCompleted ? "1" : "0");
+  render();
+});
 
 /* ---------- Colour theme (per board, cycled with the palette button) ----------
  * Remembered per board locally (a personal view preference, like the active
@@ -2657,7 +2674,6 @@ document.getElementById("date-display").addEventListener("click", () => {
     picker.focus();
   }
 });
-document.getElementById("carry-over").addEventListener("click", carryOver);
 
 /* =====================================================================
  * Boot

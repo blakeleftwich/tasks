@@ -399,16 +399,11 @@ html[data-theme="matrix"] {
 }
 .search-input:focus { outline: none; border-color: var(--todo); }
 
-.carry-btn {
-  border-style: dashed;
-  border-color: var(--progress);
-  color: #b45309;
-  background: #fffbeb;
-}
-
-.carry-btn:hover {
-  background: #fef3c7;
-  border-color: var(--progress);
+/* Show/hide checked-off tasks toggle (right of the search row). */
+#toggle-completed.active {
+  background: var(--hover);
+  border-color: var(--hover-border);
+  color: var(--text);
 }
 
 /* ---------- Tab bar (per-board tabs, above the board) ---------- */
@@ -491,6 +486,23 @@ body.stacked-view .tab-bar {
 }
 .tab-name-input:focus { outline: none; }
 
+/* "+ Tab" at the end of the tab row. */
+.tab-add {
+  flex: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 7px 10px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-add:hover { background: var(--hover); color: var(--text); }
+
 /* The tab lifted under the cursor while dragging. */
 .tab-drag-clone {
   position: fixed;
@@ -515,28 +527,27 @@ body.stacked-view .tab-bar {
 body.tab-dragging-active { cursor: grabbing; user-select: none; }
 
 /* ---------- Board ---------- */
+/* Flex (not grid) so the "+ Task Set" tile can be slim and not push columns. */
 .board {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(280px, 1fr);
+  display: flex;
+  align-items: flex-start;
   gap: 16px;
   padding: clamp(16px, 4vw, 40px);
-  align-items: start;
   overflow-x: auto;
 }
 
 /* Stacked view (toggle): one column, centred for readability. */
 .board.stacked {
-  grid-auto-flow: row;
-  grid-auto-columns: auto;
-  grid-template-columns: 1fr;
+  flex-direction: column;
   max-width: var(--stack-width);
   margin-inline: auto;
   overflow-x: visible;
 }
+.board.stacked .column { flex: none; width: 100%; min-width: 0; }
 
-/* "+ Add category" tile at the end of the board. */
 .column {
+  flex: 1 1 280px;
+  min-width: 280px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -548,6 +559,40 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
   outline: 2px solid transparent;
   outline-offset: -2px;
 }
+
+/* "+ Task Set" tile — slim on the right in column mode, full-width below in stack. */
+.add-taskset {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 44px;
+  min-height: 88px;
+  padding: 14px 0;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.add-taskset:hover { border-color: var(--hover-border); color: var(--text); background: var(--hover); }
+.add-taskset .ats-plus { font-size: 1.3rem; line-height: 1; }
+.add-taskset .ats-label { display: none; font-size: 0.85rem; }
+/* Stack mode: full-width row with the label shown. */
+.board.stacked .add-taskset {
+  flex: none;
+  width: 100%;
+  min-height: 0;
+  flex-direction: row;
+  gap: 8px;
+  padding: 14px;
+}
+.board.stacked .add-taskset .ats-label { display: inline; }
 
 .column.drag-over {
   background: var(--accent-soft);
@@ -1241,9 +1286,9 @@ body { padding-bottom: 46px; }
   .toolbar-right { flex: 1 1 100%; justify-content: flex-start; }
   .search-input { width: auto; flex: 1; min-width: 0; }
 
-  /* Compact horizontal categories on phones (swipe for more). */
-  .board { grid-auto-columns: minmax(150px, 1fr); gap: 8px; padding: 10px; }
-  .column { border-radius: 9px; }
+  /* Compact horizontal task sets on phones (swipe for more). */
+  .board { gap: 8px; padding: 10px; }
+  .column { flex-basis: 150px; min-width: 150px; border-radius: 9px; }
   .column-header { padding: 8px 8px 6px; gap: 5px; }
   .column-name { font-size: 0.74rem; padding: 2px 4px; }
   .column-header .count { padding: 1px 6px; font-size: 0.68rem; }
