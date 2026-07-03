@@ -399,12 +399,22 @@ html[data-theme="matrix"] {
 }
 .search-input:focus { outline: none; border-color: var(--todo); }
 
-/* Show/hide checked-off tasks toggle (right of the search row). */
-#toggle-completed.active {
-  background: var(--hover);
-  border-color: var(--hover-border);
-  color: var(--text);
+/* Low-profile "Show completed" toggle inside a task set (only when it has any). */
+.show-completed {
+  align-self: flex-start;
+  margin: 2px 8px 8px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
+.show-completed:hover { background: var(--hover); color: var(--text); }
+.show-completed.on { color: var(--text); }
 
 /* ---------- Tab bar (per-board tabs, above the board) ---------- */
 /* Aligns with the board: full-width in columns mode, centred (720px) in stack
@@ -803,21 +813,44 @@ body.tab-dragging-active { touch-action: none; }
 .check:hover { border-color: var(--done); }
 .check.on { background: var(--done); border-color: var(--done); }
 
-.card-title {
-  flex: 1;
+/* Inline "click the text to edit" fields (title / description / checklist). */
+.tedit-text { border-radius: 4px; cursor: text; }
+.tedit-text.tedit-placeholder { color: var(--muted); }
+.tedit-input { font: inherit; }
+
+/* Title */
+.card-title-wrap { flex: 1; min-width: 0; }
+.card-title-text {
+  display: block;               /* collapsed: one line, click anywhere expands */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text);
+  padding: 2px;
+  cursor: pointer;
+}
+.card.expanded .card-title-text {
+  display: inline;              /* expanded: hug the text so only it is clickable */
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+.card.expanded .card-title-text:hover { background: var(--accent-soft); }
+.card-title-input {
+  width: 100%;
   font: inherit;
   font-weight: 600;
   font-size: 0.92rem;
   border: none;
-  background: transparent;
+  background: var(--accent-soft);
   color: var(--text);
   padding: 2px;
   border-radius: 4px;
-  min-width: 0;
 }
-.card-title[readonly] { cursor: pointer; }
-.card-title:focus { outline: none; }
-.card-title:not([readonly]):focus { background: var(--accent-soft); }
+.card-title-input:focus { outline: none; }
 
 .delete-btn {
   flex: none;
@@ -851,22 +884,32 @@ body.tab-dragging-active { touch-action: none; }
 }
 .card.expanded .card-body-inner { opacity: 1; }
 
-.card-notes {
+/* Description */
+.card-notes-wrap { display: block; margin-top: 8px; }
+.card-notes-text {
+  display: inline;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  padding: 1px 2px;
+}
+.card-notes-input {
   width: 100%;
   font: inherit;
   font-size: 0.85rem;
   color: var(--text);
-  background: var(--field);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--todo);
   border-radius: 8px;
   resize: none;
   padding: 7px 9px;
-  margin-top: 8px;
   min-height: 40px;
   overflow: hidden;
 }
-.card-notes::placeholder { color: var(--muted); }
-.card-notes:focus { outline: none; border-color: var(--todo); background: var(--surface); }
+.card-notes-input:focus { outline: none; }
 
 /* Meta badges (always visible when set) */
 .card-meta {
@@ -913,7 +956,7 @@ body.tab-dragging-active { touch-action: none; }
 /* Selection ring shows only while navigating with the keyboard. */
 body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px; }
 .card.done-card { opacity: 0.62; }
-.card.done-card .card-title { text-decoration: line-through; color: var(--muted); }
+.card.done-card .card-title-text { text-decoration: line-through; color: var(--muted); }
 
 /* Checklist progress chip (visible even when collapsed) */
 .progress-chip {
@@ -978,22 +1021,32 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
   accent-color: var(--done);
   margin-top: 4px;
 }
-.checklist-text {
-  flex: 1;
+.checklist-wrap { flex: 1; min-width: 0; }
+.checklist-text-display {
+  display: inline;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  padding: 2px 4px;
+}
+.checklist-text-input {
+  width: 100%;
   font: inherit;
   font-size: 0.82rem;
   line-height: 1.35;
   border: none;
-  background: transparent;
+  background: var(--accent-soft);
   color: var(--text);
   padding: 2px 4px;
   border-radius: 4px;
-  min-width: 0;
   resize: none;
   overflow: hidden;
 }
-.checklist-text:focus { outline: none; background: var(--accent-soft); }
-.checklist-item.done .checklist-text { text-decoration: line-through; color: var(--muted); }
+.checklist-text-input:focus { outline: none; }
+.checklist-item.done .checklist-text-display { text-decoration: line-through; color: var(--muted); }
 .checklist-del {
   flex: none;
   border: none;
@@ -1297,7 +1350,7 @@ body { padding-bottom: 46px; }
   .add-input { padding: 7px; font-size: 0.78rem; }
   .card { padding: 7px 8px; border-radius: 8px; }
   .card-top { gap: 6px; }
-  .card-title { font-size: 0.82rem; }
+  .card-title-text, .card-title-input { font-size: 0.82rem; }
   .check { width: 20px; height: 20px; } /* bigger tap target for touch */
   .card-meta { gap: 4px; }
 

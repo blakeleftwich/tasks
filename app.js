@@ -169,6 +169,7 @@ let expandedCardId = null; // the card expanded in place (view state, not persis
 let propsOpenForId = null; // card whose priority/due/colour options are revealed
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
 let searchQuery = ""; // lowercased search filter
+let shownCompletedCols = new Set(); // task-set (column) keys currently revealing completed tasks
 
 let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
@@ -369,12 +370,9 @@ function addTask(status) {
   selectedCardId = task.id;
   persist([task]);
   render();
-  // A brand-new task opens ready to name — make the title editable + focused.
-  const el = document.querySelector(`[data-id="${task.id}"] .card-title`);
-  if (el) {
-    el.removeAttribute("readonly");
-    el.focus();
-  }
+  // A brand-new task opens ready to name — enter title edit mode immediately.
+  const disp = document.querySelector(`[data-id="${task.id}"] .card-title-text`);
+  if (disp) disp.click();
 }
 
 // Inline add: create a named task and keep the add field focused for the next one.
@@ -1181,11 +1179,12 @@ function render() {
   document.getElementById("date-display").textContent = formatHeaderDate(selectedDate);
   document.getElementById("date-picker").value = selectedDate;
   renderTabs();
-  renderCompletedToggle();
 
   board.innerHTML = "";
   categories.forEach((col, index) => {
-    const items = group(selectedDate, col.key).filter(isVisibleTask);
+    const all = group(selectedDate, col.key);
+    const completedInCol = all.filter((t) => t.completed);
+    const items = all.filter(isVisibleTask);
 
     const column = document.createElement("section");
     column.className = "column";
@@ -1216,13 +1215,29 @@ function render() {
     column.querySelector(".column-header").addEventListener("pointerdown", (e) => onColumnPointerDown(e, column));
 
     const list = column.querySelector(".card-list");
-    if (items.length === 0) {
+    if (items.length === 0 && completedInCol.length === 0) {
       const hint = document.createElement("div");
       hint.className = "empty-hint";
       hint.textContent = "No tasks";
       list.appendChild(hint);
     } else {
       items.forEach((task) => list.appendChild(renderCard(task)));
+    }
+
+    // Low-profile "Show completed" toggle — only when this task set has completed items.
+    if (completedInCol.length > 0) {
+      const shown = shownCompletedCols.has(col.key);
+      const scBtn = document.createElement("button");
+      scBtn.className = "show-completed" + (shown ? " on" : "");
+      scBtn.type = "button";
+      scBtn.textContent = `${shown ? "Hide" : "Show"} completed (${completedInCol.length})`;
+      scBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (shown) shownCompletedCols.delete(col.key);
+        else shownCompletedCols.add(col.key);
+        render();
+      });
+      column.querySelector(".add-row").before(scBtn);
     }
 
     const addInput = column.querySelector(".add-input");
@@ -1245,26 +1260,8 @@ function render() {
   addTile.addEventListener("click", addCategory);
   board.appendChild(addTile);
 
-  // Size auto-growing fields of expanded cards now that they're in the DOM.
-  board.querySelectorAll(".card.expanded .card-notes, .card.expanded .checklist-text").forEach(autoGrow);
-
   if (beforeFlip) flipCards(beforeFlip);
   flipNextRender = false;
-}
-
-// Show/hide checked-off tasks. The toggle lives on the right of the search row
-// and only appears when there are completed tasks in view (or they're showing).
-function renderCompletedToggle() {
-  const btn = document.getElementById("toggle-completed");
-  if (!btn) return;
-  const doneCount = tasks.filter((t) => t.day === selectedDate && inActiveTab(t) && t.completed).length;
-  if (doneCount === 0 && !showCompleted) {
-    btn.hidden = true;
-    return;
-  }
-  btn.hidden = false;
-  btn.classList.toggle("active", showCompleted);
-  btn.textContent = showCompleted ? `Hide checked off (${doneCount})` : `Show checked off (${doneCount})`;
 }
 
 function renderCard(task) {
@@ -1291,20 +1288,19 @@ function renderCard(task) {
     toggleCompleted(task.id);
   });
 
-  // Title stays read-only by default. Clicking a collapsed card just expands it
-  // (the title is NOT focused). Clicking the name on an already-open card begins
-  // editing it.
-  const title = node.querySelector(".card-title");
-  const notes = node.querySelector(".card-notes");
-  title.value = task.title;
-  title.addEventListener("mousedown", (e) => {
-    if (!title.hasAttribute("readonly")) return; // already editing
-    if (expandedCardId === task.id) title.removeAttribute("readonly"); // open → start editing here
-    else e.preventDefault(); // collapsed → expand only, don't focus the name
+  // Title — click the text itself to edit. On a collapsed card, a click on the
+  // title just expands the card (we let the click bubble to the card handler).
+  const titleEl = node.querySelector(".card-title");
+  const titleEdit = textEdit({
+    value: task.title,
+    placeholder: "Task name",
+    wrapClass: "card-title-wrap",
+    displayClass: "card-title-text",
+    inputClass: "card-title-input",
+    onCommit: (v) => updateTask(task.id, { title: v }),
+    onDisplayClick: () => expandedCardId === task.id, // collapsed → false → bubble → expand
   });
-  title.addEventListener("blur", () => title.setAttribute("readonly", ""));
-  title.addEventListener("input", () => saveLocal());
-  title.addEventListener("change", () => updateTask(task.id, { title: title.value }));
+  titleEl.replaceWith(titleEdit);
 
   // Meta: due / priority / checklist progress.
   const checklist = Array.isArray(task.checklist) ? task.checklist : [];
@@ -1335,19 +1331,19 @@ function renderCard(task) {
   }
   node.querySelector(".card-meta").hidden = !task.due && !selectedTag && checklist.length === 0;
 
-  // Description. Enter finishes (blurs); Shift+Enter still inserts a newline.
-  notes.value = task.notes;
-  notes.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      notes.blur();
-    }
+  // Description — click the text (or placeholder) to edit. Enter finishes,
+  // Shift+Enter inserts a newline.
+  const notesEl = node.querySelector(".card-notes");
+  const notesEdit = textEdit({
+    value: task.notes,
+    placeholder: "Add a description…",
+    multiline: true,
+    wrapClass: "card-notes-wrap",
+    displayClass: "card-notes-text",
+    inputClass: "card-notes-input",
+    onCommit: (v) => updateTask(task.id, { notes: v }),
   });
-  notes.addEventListener("input", () => {
-    autoGrow(notes);
-    saveLocal();
-  });
-  notes.addEventListener("change", () => updateTask(task.id, { notes: notes.value }));
+  notesEl.replaceWith(notesEdit);
 
   // Checklist.
   renderChecklist(node, task, checklist);
@@ -1400,11 +1396,6 @@ function renderCard(task) {
 function setCardExpanded(node, open) {
   if (!node) return;
   node.classList.toggle("expanded", open);
-  if (open) {
-    node.querySelectorAll(".card-notes, .checklist-text").forEach(autoGrow);
-  } else {
-    node.querySelector(".card-title").setAttribute("readonly", ""); // reset edit state
-  }
 }
 
 function expandCard(id) {
@@ -1475,6 +1466,83 @@ function updateAndRender(id, fields) {
   render();
 }
 
+/* ---------- Inline "click the text to edit" field ----------
+ * Shows the value (or its placeholder) as inline text sized to the text itself,
+ * so ONLY a click on the actual text enters edit mode — clicking the empty area
+ * around it does nothing and shows no edit cursor. Used for the card title,
+ * description, and checklist steps.
+ *   opts: { value, placeholder, multiline, displayClass, inputClass,
+ *           onCommit(v), onInput(v)?, onDisplayClick(e)? -> false to let bubble } */
+function textEdit(opts) {
+  const wrap = document.createElement("span");
+  wrap.className = "tedit" + (opts.multiline ? " tedit-multi" : "") + (opts.wrapClass ? " " + opts.wrapClass : "");
+  let value = opts.value != null ? String(opts.value) : "";
+
+  const display = document.createElement("span");
+  display.className = "tedit-text" + (opts.displayClass ? " " + opts.displayClass : "");
+  const paint = () => {
+    display.textContent = value !== "" ? value : opts.placeholder || "";
+    display.classList.toggle("tedit-placeholder", value === "");
+  };
+  paint();
+  display.addEventListener("click", (e) => {
+    if (opts.onDisplayClick && opts.onDisplayClick(e) === false) return; // let it bubble (e.g. expand)
+    e.stopPropagation();
+    edit();
+  });
+  wrap.appendChild(display);
+  wrap.startEdit = edit;
+
+  function edit() {
+    const field = document.createElement(opts.multiline ? "textarea" : "input");
+    field.className = "tedit-input" + (opts.inputClass ? " " + opts.inputClass : "");
+    if (!opts.multiline) field.type = "text";
+    else field.rows = 1;
+    field.value = value;
+    if (opts.placeholder) field.placeholder = opts.placeholder;
+    wrap.replaceChild(field, display);
+    if (opts.multiline) autoGrow(field);
+    field.focus();
+    const n = field.value.length;
+    try {
+      field.setSelectionRange(n, n);
+    } catch (e) {
+      /* ignore */
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      value = field.value;
+      paint();
+      if (field.parentNode === wrap) wrap.replaceChild(display, field);
+      opts.onCommit && opts.onCommit(value);
+    };
+    field.addEventListener("blur", finish);
+    field.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (!opts.multiline || !e.shiftKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        field.blur();
+      } else if (e.key === "Escape") {
+        e.stopPropagation(); // just cancel the edit, don't also collapse the card
+        field.value = value;
+        field.blur();
+      }
+    });
+    field.addEventListener("input", () => {
+      if (opts.multiline) autoGrow(field);
+      opts.onInput && opts.onInput(field.value);
+    });
+    // While editing, keep clicks/drags from reaching the card underneath.
+    field.addEventListener("click", (e) => e.stopPropagation());
+    field.addEventListener("pointerdown", (e) => e.stopPropagation());
+  }
+
+  return wrap;
+}
+
 /* ---------- Checklist (sub-steps) ---------- */
 function renderChecklist(node, task, checklist) {
   const list = node.querySelector(".checklist-items");
@@ -1494,12 +1562,15 @@ function renderChecklist(node, task, checklist) {
     cb.checked = item.done;
     cb.addEventListener("change", () => toggleChecklistItem(task.id, item.id));
 
-    const text = document.createElement("textarea");
-    text.className = "checklist-text";
-    text.rows = 1;
-    text.value = item.text;
-    text.addEventListener("input", () => autoGrow(text));
-    text.addEventListener("change", () => updateChecklistText(task.id, item.id, text.value));
+    const text = textEdit({
+      value: item.text,
+      placeholder: "Step",
+      multiline: true,
+      wrapClass: "checklist-wrap",
+      displayClass: "checklist-text-display",
+      inputClass: "checklist-text-input",
+      onCommit: (v) => updateChecklistText(task.id, item.id, v),
+    });
 
     const del = document.createElement("button");
     del.className = "checklist-del";
@@ -2419,10 +2490,10 @@ function matchesSearch(task) {
   return (task.title + " " + (task.notes || "")).toLowerCase().includes(searchQuery);
 }
 
-// Whether a task shows in the board right now: matches search AND (not checked
-// off, unless the user has chosen to show checked-off items).
+// Whether a task shows in the board right now: matches search AND (not completed,
+// unless its task set is currently revealing completed items).
 function isVisibleTask(task) {
-  return matchesSearch(task) && (showCompleted || !task.completed);
+  return matchesSearch(task) && (!task.completed || shownCompletedCols.has(task.status));
 }
 
 function visibleColumn(status) {
@@ -2476,8 +2547,9 @@ document.getElementById("search").addEventListener("input", (e) => {
 // Using the mouse/touch hides the keyboard selection ring.
 document.addEventListener("pointerdown", () => document.body.classList.remove("kb-nav"));
 
-// Stacked / side-by-side view toggle (a local view preference).
-let stackedView = localStorage.getItem("stackedView") === "1";
+// Stacked / side-by-side view toggle (a local view preference). Defaults to
+// stacked when the user hasn't chosen yet.
+let stackedView = (localStorage.getItem("stackedView") ?? "1") === "1";
 function applyView() {
   board.classList.toggle("stacked", stackedView);
   document.body.classList.toggle("stacked-view", stackedView); // centre the tab bar to match
@@ -2491,14 +2563,6 @@ document.getElementById("view-toggle").addEventListener("click", () => {
   applyView();
 });
 applyView();
-
-// Show / hide checked-off tasks (a local preference; tasks stay, just hidden).
-let showCompleted = localStorage.getItem("showCompleted") === "1";
-document.getElementById("toggle-completed").addEventListener("click", () => {
-  showCompleted = !showCompleted;
-  localStorage.setItem("showCompleted", showCompleted ? "1" : "0");
-  render();
-});
 
 /* ---------- Colour theme (per board, cycled with the palette button) ----------
  * Remembered per board locally (a personal view preference, like the active

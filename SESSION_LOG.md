@@ -1,5 +1,14 @@
 # Session Log
 
+## 2026-07-03 (later) — Default stacked; per-set completed toggle; click-text-to-edit
+
+- **Default view is now stacked**: `stackedView = (localStorage.getItem("stackedView") ?? "1") === "1"` (respects an existing pref, defaults stacked).
+- **Per-task-set "Show completed"**: removed the global toolbar toggle. Each task set (column) shows a low-profile `.show-completed` button ("Show/Hide completed (N)") only when it has ≥1 completed task. Per-column reveal tracked in an in-memory `shownCompletedCols` Set (resets on reload). `isVisibleTask()` now checks `shownCompletedCols.has(task.status)`. Empty-but-has-completed columns skip the "No tasks" hint.
+- **Click-the-text-to-edit** (`textEdit()` helper): card **title**, **description**, and **checklist steps** now render as inline text sized to the text; only a click on the actual text enters edit mode (swaps in an input/textarea) — clicking the empty area around it does nothing and shows no edit cursor. Collapsed-card title click still expands (handler returns false → click bubbles). New-task auto-edit now triggers via `.card-title-text` click. `setCardExpanded` simplified (no more readonly reset — was `.card-title` which no longer exists). Enter/Escape in an edit field stop-propagate so they don't also hit board shortcuts. CSS: new `.tedit*` + `.card-title-text/-input`, `.card-notes-text/-input`, `.checklist-text-display/-input`.
+- Verified (preview, column + mobile): collapsed title→expand, expanded title-text→edit, empty-area click→no edit, notes/checklist text→edit, empty-notes placeholder clickable, new-task opens in edit, card drag intact, per-set toggle reveals/hides, stacked default; no console errors.
+
+---
+
 ## 2026-07-03 — Terminology + layout overhaul; carry-over → show-completed
 
 ### Terminology (user-facing strings only; DB/vars unchanged)
