@@ -1,5 +1,14 @@
 # Session Log
 
+## 2026-07-04 (later) — Drag auto-scroll; set grab handle; text-only set rename
+
+- **Auto-scroll while dragging**: near a viewport edge during a card or column drag, the window scrolls vertically (up + down) and the board scrolls horizontally (left + right, side-by-side columns), so you can drop into off-screen spots. Shared `beginAutoScroll/moveAutoScroll/endAutoScroll` (rAF loop; edge=72px, max 22px/frame; `onScroll` re-places the drop marker as content moves). Wired into card drag (`startLift`/`onDragMove`/`onDragEnd`) and column drag (`startColumnLift`/`onColumnMove`/`onColumnUp`; factored `placeColumnPlaceholder`). NOTE: rAF doesn't fire in the headless preview, so verified the scroll math via a `setTimeout` rAF-shim (scrolled down then back up) — real browsers run it.
+- **Set grab handle**: replaced the colored header dot with a 6-dot **grip** icon (`GRIP_SVG`), tinted with the set's colour, `cursor: grab`. The whole header is still draggable (grip is just the affordance).
+- **Text-only set rename**: the set-name header now uses the `textEdit` helper (like card title/notes/checklist) — only clicking the **name text** enters edit; clicking empty header space doesn't. `onDisplayClick: () => !justColumnDragged` so the click that ends a drag doesn't open edit. Removed the now-dead `startCategoryRename`; `addCategory` opens the new set's name via `.column-name-text` click + selects "New Set".
+- Verified: grip present/tinted + drags to reorder; name edits only on text; empty-header click doesn't edit; new set opens selected; auto-scroll math both directions; no console errors.
+
+---
+
 ## 2026-07-04 (later) — Collapsible task sets
 
 - Each task set (column) now has a **collapse caret** (`.col-collapse`, ▾ in the header, rotates when collapsed). Clicking it hides that set's card-list / add-row / show-completed button (and skips rendering its cards); the header stays.

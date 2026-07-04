@@ -727,36 +727,34 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
 }
 body.col-dragging-active { cursor: grabbing; user-select: none; }
 
-.column-header .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+/* Grab handle (its colour = the set's colour). */
+.col-grip {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  cursor: grab;
+  opacity: 0.9;
 }
+.col-grip svg { display: block; }
+.column-header:active .col-grip { cursor: grabbing; }
 
-.column[data-col="todo"] .dot { background: var(--todo); }
-.column[data-col="inProgress"] .dot { background: var(--progress); }
-.column[data-col="done"] .dot { background: var(--done); }
-
-.column-name {
-  margin: 0;
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 3px 6px;
-  border-radius: 6px;
-  text-align: left;
-  flex: 1;
-  min-width: 0;
+/* Set name — inline text sized to itself, so only the text is clickable to edit. */
+.column-name-wrap { flex: 1; min-width: 0; }
+.column-name-text {
+  display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: bottom;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: text;
 }
-.column-name:hover { background: var(--hover); }
+.column-name-text:hover { background: var(--hover); }
 
 .col-delete {
   flex: none;
@@ -775,15 +773,16 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
 .col-delete:hover { opacity: 1; color: #ef4444; }
 
 .column-name-input {
+  width: 100%;
   font: inherit;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text);
-  border: 1px solid var(--todo);
-  border-radius: 6px;
+  border: none;
+  border-bottom: 2px solid var(--todo);
+  background: var(--surface);
+  border-radius: 6px 6px 0 0;
   padding: 2px 5px;
-  min-width: 0;
-  flex: 1;
 }
 .column-name-input:focus { outline: none; }
 
@@ -1422,7 +1421,7 @@ body { padding-bottom: 46px; }
   .board { gap: 8px; padding: 10px; }
   .column { flex-basis: 150px; min-width: 150px; border-radius: 9px; }
   .column-header { padding: 8px 8px 6px; gap: 5px; }
-  .column-name { font-size: 0.74rem; padding: 2px 4px; }
+  .column-name-text, .column-name-input { font-size: 0.74rem; padding: 2px 4px; }
   .column-header .count { padding: 1px 6px; font-size: 0.68rem; }
   .card-list { padding: 6px; gap: 6px; }
   .add-row { padding: 0 6px 8px; }

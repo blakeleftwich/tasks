@@ -474,6 +474,9 @@ function moveTaskTo(id, toStatus, beforeId) {
 const board = document.getElementById("board");
 const cardTemplate = document.getElementById("card-template");
 
+// A "grab" handle (6-dot grip) for the task-set header.
+const GRIP_SVG = `<svg width="12" height="15" viewBox="0 0 12 15" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="3" r="1.4"/><circle cx="8.5" cy="3" r="1.4"/><circle cx="3.5" cy="7.5" r="1.4"/><circle cx="8.5" cy="7.5" r="1.4"/><circle cx="3.5" cy="12" r="1.4"/><circle cx="8.5" cy="12" r="1.4"/></svg>`;
+
 /* ---------- Categories (columns) ---------- */
 // All column/tag edits live inside a tab, so saving categories saves the tabs.
 function persistCategories() {
@@ -531,9 +534,12 @@ function addCategory() {
   categories.push(cat);
   persistCategories();
   render();
-  const headers = board.querySelectorAll(".column-name");
-  const last = headers[headers.length - 1];
-  if (last) startCategoryRename(last, cat);
+  // Open the new set's name for editing, with the placeholder text selected.
+  const disp = board.querySelector(`.column[data-col="${cat.key}"] .column-name-text`);
+  if (disp) {
+    disp.click();
+    board.querySelector(`.column[data-col="${cat.key}"] .column-name-input`)?.select();
+  }
 }
 
 async function deleteCategory(cat) {
@@ -754,34 +760,6 @@ async function deleteTag(task, tag) {
   render();
 }
 
-function startCategoryRename(nameEl, cat) {
-  const input = document.createElement("input");
-  input.className = "column-name-input";
-  input.value = cat.label;
-  nameEl.replaceWith(input);
-  input.focus();
-  input.select();
-  let settled = false;
-  const commit = () => {
-    if (settled) return;
-    settled = true;
-    const v = input.value.trim();
-    if (v && v !== cat.label) {
-      cat.label = v;
-      persistCategories();
-    }
-    render();
-  };
-  input.addEventListener("blur", commit);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") input.blur();
-    else if (e.key === "Escape") {
-      input.value = cat.label;
-      input.blur();
-    }
-  });
-}
-
 /* ---------- Reorder categories by dragging the column header ----------
  * Same feel as dragging task cards: a floating clone follows the cursor while a
  * dashed placeholder shows where the column will land. */
@@ -843,7 +821,13 @@ function onColumnMove(e) {
   e.preventDefault();
   colDrag.clone.style.left = e.clientX - colDrag.grabX + "px";
   colDrag.clone.style.top = e.clientY - colDrag.grabY + "px";
-  const after = columnAfterElement(e.clientX);
+  placeColumnPlaceholder(e.clientX);
+  moveAutoScroll(e.clientX, e.clientY);
+}
+
+function placeColumnPlaceholder(x) {
+  if (!colDrag || !colDrag.placeholder) return;
+  const after = columnAfterElement(x);
   const addTile = board.querySelector(".add-taskset");
   if (after == null) board.insertBefore(colDrag.placeholder, addTile);
   else board.insertBefore(colDrag.placeholder, after);
@@ -866,6 +850,8 @@ function startColumnLift() {
   colDrag.placeholder = ph;
   col.style.display = "none";
   col.after(ph);
+
+  beginAutoScroll((x) => placeColumnPlaceholder(x));
 }
 
 function columnAfterElement(x) {
@@ -883,6 +869,7 @@ function columnAfterElement(x) {
 
 function onColumnUp() {
   removeColumnListeners();
+  endAutoScroll();
   if (!colDrag) return;
   if (colDrag.lpTimer) clearTimeout(colDrag.lpTimer);
   const d = colDrag;
@@ -1214,15 +1201,15 @@ function render() {
     column.innerHTML = `
       <div class="column-header">
         <button class="col-collapse" type="button" title="Collapse / expand" aria-label="Collapse or expand task set">▾</button>
-        <span class="dot"></span>
-        <button class="column-name" type="button" title="Click to rename"></button>
+        <span class="col-grip" title="Drag to reorder">${GRIP_SVG}</span>
+        <span class="column-name-slot"></span>
         <span class="count">${items.length}</span>
         <button class="col-delete" type="button" title="Delete task set" aria-label="Delete task set">×</button>
       </div>
       <div class="card-list"></div>
       <div class="add-row"><input class="add-input" type="text" placeholder="+ Add something" aria-label="Add something" /></div>
     `;
-    column.querySelector(".dot").style.background = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+    column.querySelector(".col-grip").style.color = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
     column.querySelector(".col-collapse").addEventListener("click", (e) => {
       e.stopPropagation();
       if (collapsedSets.has(col.key)) collapsedSets.delete(col.key);
@@ -1230,12 +1217,23 @@ function render() {
       saveCollapsed();
       render();
     });
-    const nameEl = column.querySelector(".column-name");
-    nameEl.textContent = col.label;
-    nameEl.addEventListener("click", () => {
-      if (justColumnDragged) return; // a drag, not a click
-      startCategoryRename(nameEl, col);
+    // Set name — click the text itself (not the empty header space) to rename.
+    const nameEdit = textEdit({
+      value: col.label,
+      placeholder: "Set name",
+      wrapClass: "column-name-wrap",
+      displayClass: "column-name-text",
+      inputClass: "column-name-input",
+      onCommit: (v) => {
+        if (v && v !== col.label) {
+          col.label = v;
+          persistCategories();
+        }
+        render();
+      },
+      onDisplayClick: () => !justColumnDragged, // don't edit on the click that ends a drag
     });
+    column.querySelector(".column-name-slot").replaceWith(nameEdit);
     const delBtn = column.querySelector(".col-delete");
     delBtn.hidden = categories.length <= 1; // keep at least one
     delBtn.addEventListener("click", (e) => {
@@ -1745,6 +1743,56 @@ function removeDragListeners() {
   window.removeEventListener("pointercancel", onDragEnd);
 }
 
+/* Auto-scroll while dragging near a viewport edge, so you can drop into places
+ * that are currently off-screen. Scrolls the window vertically (up + down) and
+ * the board horizontally (left + right, in side-by-side columns). The onScroll
+ * callback re-places the drop marker as the content moves under the pointer. */
+let autoScroll = null;
+function beginAutoScroll(onScroll) {
+  if (autoScroll) return;
+  autoScroll = { x: 0, y: 0, onScroll, raf: 0 };
+  const EDGE = 72; // px from an edge where scrolling kicks in
+  const MAX = 22; // max px per frame at the very edge
+  const step = () => {
+    if (!autoScroll) return;
+    const { x, y } = autoScroll;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    let dy = 0;
+    let dx = 0;
+    if (y < EDGE) dy = -Math.ceil((1 - y / EDGE) * MAX);
+    else if (y > vh - EDGE) dy = Math.ceil((1 - (vh - y) / EDGE) * MAX);
+    if (x < EDGE) dx = -Math.ceil((1 - x / EDGE) * MAX);
+    else if (x > vw - EDGE) dx = Math.ceil((1 - (vw - x) / EDGE) * MAX);
+    let moved = false;
+    if (dy) {
+      const before = window.scrollY;
+      window.scrollBy(0, dy);
+      if (window.scrollY !== before) moved = true;
+    }
+    if (dx && board.scrollWidth > board.clientWidth + 1) {
+      const before = board.scrollLeft;
+      board.scrollLeft += dx;
+      if (board.scrollLeft !== before) moved = true;
+    }
+    if (moved && autoScroll.onScroll) autoScroll.onScroll(x, y);
+    autoScroll.raf = requestAnimationFrame(step);
+  };
+  autoScroll.raf = requestAnimationFrame(step);
+}
+function moveAutoScroll(x, y) {
+  if (autoScroll) {
+    autoScroll.x = x;
+    autoScroll.y = y;
+  }
+}
+function endAutoScroll() {
+  if (autoScroll) {
+    cancelAnimationFrame(autoScroll.raf);
+    autoScroll = null;
+  }
+}
+
 function onCardPointerDown(e, node, id) {
   const touch = isTouch(e);
   if (!touch) {
@@ -1807,6 +1855,7 @@ function onDragMove(e) {
   drag.clone.style.left = e.clientX - drag.grabX + "px";
   drag.clone.style.top = e.clientY - drag.grabY + "px";
   updatePlaceholder(e.clientX, e.clientY);
+  moveAutoScroll(e.clientX, e.clientY);
 }
 
 function startLift() {
@@ -1827,6 +1876,8 @@ function startLift() {
   drag.placeholder = ph;
   drag.node.style.display = "none";
   drag.node.after(ph);
+
+  beginAutoScroll((x, y) => updatePlaceholder(x, y));
 }
 
 function updatePlaceholder(x, y) {
@@ -1841,6 +1892,7 @@ function updatePlaceholder(x, y) {
 
 function onDragEnd(e) {
   removeDragListeners();
+  endAutoScroll();
   if (!drag) return;
   if (drag.lpTimer) clearTimeout(drag.lpTimer);
   const d = drag;
