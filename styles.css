@@ -5,8 +5,8 @@
   --muted: #6b7686;
   --border: #e3e8f0;
   --hover: #eef2fb; /* subtle interactive hover background (themeable) */
-  --hover-border: var(--hover-border); /* stronger border on hover / dashed outlines */
-  --accent-soft: var(--accent-soft); /* soft tint behind focused fields + drag targets/placeholders */
+  --hover-border: #cbd5e6; /* stronger border on hover / dashed outlines */
+  --accent-soft: #eef4ff; /* soft tint behind focused fields + drag targets/placeholders */
   --field: #f8fafc; /* description textarea background */
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
   --shadow-drag: 0 8px 24px rgba(16, 24, 40, 0.18);
@@ -564,7 +564,6 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
-  min-height: 160px;
   transition: background 0.15s, outline-color 0.15s;
   outline: 2px solid transparent;
   outline-offset: -2px;
@@ -715,26 +714,18 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
   flex: 1;
 }
 
-.empty-hint {
-  color: var(--muted);
-  font-size: 0.85rem;
-  text-align: center;
-  padding: 18px 8px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-}
-
 .add-row { padding: 0 12px 14px; }
 
+/* The add field is a dashed, card-shaped placeholder for the first task. */
 .add-input {
   width: 100%;
   font: inherit;
   font-size: 0.88rem;
-  border: 1px dashed var(--hover-border);
+  border: 1.5px dashed var(--hover-border);
   background: transparent;
   color: var(--text);
-  border-radius: 8px;
-  padding: 9px 11px;
+  border-radius: 10px;
+  padding: 10px 11px;
   transition: background 0.15s, border-color 0.15s;
 }
 .add-input::placeholder { color: var(--muted); }
@@ -779,7 +770,6 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
 }
 
 body.dragging-active { user-select: none; cursor: grabbing; }
-body.dragging-active .empty-hint { display: none; }
 
 /* While a drag is active, stop touch scrolling from fighting the drag. */
 body.dragging-active,

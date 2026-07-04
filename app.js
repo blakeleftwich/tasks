@@ -39,12 +39,12 @@ function makeTab(label, columns, key) {
 }
 // The default tab (first tab of a board) — always the same stable key.
 function defaultTab(columns) {
-  return makeTab("New Tab", columns, DEFAULT_TAB_KEY);
+  return makeTab("Main", columns, DEFAULT_TAB_KEY);
 }
 
 // New boards / new tabs start with a single blank category (user preference).
 function defaultColumns() {
-  return [{ key: makeId(), label: "New Task Set" }];
+  return [{ key: makeId(), label: "New Set" }];
 }
 
 // Did this browser already have tasks before tabs existed? If so, the migrated
@@ -511,7 +511,7 @@ function loadTabsForBoard() {
 }
 
 function addCategory() {
-  const cat = { key: makeId(), label: "New Task Set" };
+  const cat = { key: makeId(), label: "New Set" };
   categories.push(cat);
   persistCategories();
   render();
@@ -926,7 +926,10 @@ function adoptOrphanTasks() {
 function renderTabs() {
   if (!tabBar) return;
   tabBar.innerHTML = "";
-  tabs.forEach((tab) => {
+  // No tab chips until the user actually makes tabs — a project with only the
+  // implicit "Main" tab just shows the "+ Tab" button.
+  const showPills = tabs.length > 1;
+  if (showPills) tabs.forEach((tab) => {
     const el = document.createElement("div");
     el.className = "tab" + (tab.key === activeTabKey ? " active" : "");
     el.dataset.tab = tab.key;
@@ -942,7 +945,9 @@ function renderTabs() {
     });
     el.appendChild(name);
 
-    if (tabs.length > 1) {
+    // Every user-created tab is deletable (even the only one); the base "Main"
+    // tab has no delete affordance.
+    if (tab.key !== DEFAULT_TAB_KEY) {
       const del = document.createElement("button");
       del.className = "tab-delete";
       del.type = "button";
@@ -996,7 +1001,7 @@ function addTab() {
 }
 
 async function deleteTab(tab) {
-  if (tabs.length <= 1) return; // keep at least one
+  if (tab.key === DEFAULT_TAB_KEY || tabs.length <= 1) return; // the base tab stays
   // Everything currently shown in this tab (including orphans homed here).
   const doomed = tasks.filter((t) => taskBelongsToTab(t) === tab.key);
   const ok = await confirmModal({
@@ -1197,7 +1202,7 @@ function render() {
         <button class="col-delete" type="button" title="Delete task set" aria-label="Delete task set">×</button>
       </div>
       <div class="card-list"></div>
-      <div class="add-row"><input class="add-input" type="text" placeholder="+ Add a task…" aria-label="Add a task" /></div>
+      <div class="add-row"><input class="add-input" type="text" placeholder="+ Add something" aria-label="Add something" /></div>
     `;
     column.querySelector(".dot").style.background = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
     const nameEl = column.querySelector(".column-name");
@@ -1215,14 +1220,7 @@ function render() {
     column.querySelector(".column-header").addEventListener("pointerdown", (e) => onColumnPointerDown(e, column));
 
     const list = column.querySelector(".card-list");
-    if (items.length === 0 && completedInCol.length === 0) {
-      const hint = document.createElement("div");
-      hint.className = "empty-hint";
-      hint.textContent = "No tasks";
-      list.appendChild(hint);
-    } else {
-      items.forEach((task) => list.appendChild(renderCard(task)));
-    }
+    items.forEach((task) => list.appendChild(renderCard(task)));
 
     // Low-profile "Show completed" toggle — only when this task set has completed items.
     if (completedInCol.length > 0) {
@@ -1256,7 +1254,7 @@ function render() {
   addTile.type = "button";
   addTile.title = "Add task set";
   addTile.setAttribute("aria-label", "Add task set");
-  addTile.innerHTML = `<span class="ats-plus">+</span><span class="ats-label">New Task Set</span>`;
+  addTile.innerHTML = `<span class="ats-plus">+</span><span class="ats-label">New Set</span>`;
   addTile.addEventListener("click", addCategory);
   board.appendChild(addTile);
 

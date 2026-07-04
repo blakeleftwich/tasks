@@ -1,5 +1,15 @@
 # Session Log
 
+## 2026-07-04 — "New Set" wording; optional tabs; dashed add-box; CSS var bugfix
+
+- **"New Task Set" → "New Set"** everywhere (default column, addCategory, the add tile label). **Add field**: "+ Add a task…" → **"+ Add something"**.
+- **Tabs are now optional/hidden by default**: `renderTabs` shows tab chips only when `tabs.length > 1`; a project with just the implicit base tab shows only "+ Tab". Base tab relabeled **"Main"** (`defaultTab()`), shown as a chip (switch/rename, no ×) once user tabs exist. Every **user tab is deletable even as the only one** (× on any `key !== DEFAULT_TAB_KEY`); `deleteTab` refuses only the base tab.
+- **Empty set cleanup**: removed the "No tasks" hint and the `.column` `min-height:160px` (no more large empty area — empty sets are compact). The **add field is now a dashed, card-shaped box** (radius 10px) that reads as a placeholder for the first task.
+- **Bugfix (latent, from the theme commit's global find-replace)**: `:root` had `--hover-border: var(--hover-border)` and `--accent-soft: var(--accent-soft)` — **circular self-references**, so both resolved empty. That had silently broken the add-input dashed border, the card focus tint, and ALL drag-placeholder tints (card/column/tab) since 2026-06-30. Restored to `#cbd5e6` / `#eef4ff`. (Same class of bug as the earlier `--hover` fix; these two were missed.)
+- Verified (preview): fresh project has no chips + "+ Tab"; add tab → [Main][New Tab] with × only on New Tab; delete → back to no chips; "New Set" + "+ Add something"; empty set compact w/ dashed add box; add task + add set work; vars resolve; no console errors.
+
+---
+
 ## 2026-07-03 (later) — Default stacked; per-set completed toggle; click-text-to-edit
 
 - **Default view is now stacked**: `stackedView = (localStorage.getItem("stackedView") ?? "1") === "1"` (respects an existing pref, defaults stacked).
