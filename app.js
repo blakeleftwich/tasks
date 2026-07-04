@@ -1199,8 +1199,7 @@ function render() {
     column.className = "column" + (collapsed ? " collapsed" : "");
     column.dataset.col = col.key;
     column.innerHTML = `
-      <div class="column-header">
-        <button class="col-collapse" type="button" title="Collapse / expand" aria-label="Collapse or expand task set">▾</button>
+      <div class="column-header" title="Click to collapse / expand">
         <span class="col-grip" title="Drag to reorder">${GRIP_SVG}</span>
         <span class="column-name-slot"></span>
         <span class="count">${items.length}</span>
@@ -1210,8 +1209,11 @@ function render() {
       <div class="add-row"><input class="add-input" type="text" placeholder="+ Add something" aria-label="Add something" /></div>
     `;
     column.querySelector(".col-grip").style.color = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
-    column.querySelector(".col-collapse").addEventListener("click", (e) => {
-      e.stopPropagation();
+    // Clicking the header (anywhere but the name text / delete) collapses or
+    // expands the set. The name text and delete stop their own clicks; a click
+    // that ends a drag is ignored via justColumnDragged.
+    column.querySelector(".column-header").addEventListener("click", () => {
+      if (justColumnDragged) return;
       if (collapsedSets.has(col.key)) collapsedSets.delete(col.key);
       else collapsedSets.add(col.key);
       saveCollapsed();
@@ -1397,11 +1399,16 @@ function renderCard(task) {
     requestDeleteTask(task.id);
   });
 
-  // Click the card to expand it in place (a plain click, not a drag).
+  // Click a collapsed card to expand it in place; click its header (the top
+  // row, but not the title text) again to collapse it. Inner clicks (title
+  // text, notes, checklist, buttons) are handled by their own handlers.
   node.addEventListener("click", (e) => {
     if (justDragged) return;
     if (e.target.closest(".check, .delete-btn")) return;
-    if (expandedCardId === task.id) return; // already open — inner clicks edit
+    if (expandedCardId === task.id) {
+      if (e.target.closest(".card-top")) collapseCard(); // header click → collapse
+      return;
+    }
     e.stopPropagation();
     selectedCardId = task.id;
     expandCard(task.id);

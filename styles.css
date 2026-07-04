@@ -680,21 +680,7 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
 }
 .column-header:active { cursor: grabbing; }
 
-/* Collapse / expand caret + collapsed state. */
-.col-collapse {
-  flex: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 0.7rem;
-  line-height: 1;
-  padding: 3px 4px;
-  border-radius: 4px;
-  transition: transform 0.15s, background 0.12s, color 0.12s;
-}
-.col-collapse:hover { background: var(--hover); color: var(--text); }
-.column.collapsed .col-collapse { transform: rotate(-90deg); }
+/* Collapsed state — the header stays, the body hides (click the header to toggle). */
 .column.collapsed .column-header { border-bottom: none; }
 .column.collapsed .card-list,
 .column.collapsed .add-row,

@@ -1,5 +1,13 @@
 # Session Log
 
+## 2026-07-04 (later) — Click-header-to-collapse (sets + cards)
+
+- **Sets**: removed the collapse caret. Clicking the **set header** (anywhere but the name text or delete ×) now toggles collapse; the name text still edits, and a click that ends a drag is ignored (`justColumnDragged`). Handler on `.column-header` click; removed `.col-collapse` markup + CSS.
+- **Cards**: clicking a collapsed card still expands it; clicking the **card header (`.card-top`) again** — but not the title text — now collapses it (`collapseCard()`), via the card click handler's expanded branch. Title text still edits; clicking the card body doesn't collapse.
+- Verified: set header click collapses/expands, name text edits (no collapse), set drag doesn't collapse; card expands on click, header re-click collapses, title text edits, body click keeps it open; no console errors.
+
+---
+
 ## 2026-07-04 (later) — Drag auto-scroll; set grab handle; text-only set rename
 
 - **Auto-scroll while dragging**: near a viewport edge during a card or column drag, the window scrolls vertically (up + down) and the board scrolls horizontally (left + right, side-by-side columns), so you can drop into off-screen spots. Shared `beginAutoScroll/moveAutoScroll/endAutoScroll` (rAF loop; edge=72px, max 22px/frame; `onScroll` re-places the drop marker as content moves). Wired into card drag (`startLift`/`onDragMove`/`onDragEnd`) and column drag (`startColumnLift`/`onColumnMove`/`onColumnUp`; factored `placeColumnPlaceholder`). NOTE: rAF doesn't fire in the headless preview, so verified the scroll math via a `setTimeout` rAF-shim (scrolled down then back up) — real browsers run it.
