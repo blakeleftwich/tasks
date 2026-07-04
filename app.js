@@ -805,13 +805,13 @@ function onColumnMove(e) {
   e.preventDefault();
   colDrag.clone.style.left = e.clientX - colDrag.grabX + "px";
   colDrag.clone.style.top = e.clientY - colDrag.grabY + "px";
-  placeColumnPlaceholder(e.clientX);
+  placeColumnPlaceholder(e.clientX, e.clientY);
   moveAutoScroll(e.clientX, e.clientY);
 }
 
-function placeColumnPlaceholder(x) {
+function placeColumnPlaceholder(x, y) {
   if (!colDrag || !colDrag.placeholder) return;
-  const after = columnAfterElement(x);
+  const after = columnAfterElement(x, y);
   const addTile = board.querySelector(".add-taskset");
   if (after == null) board.insertBefore(colDrag.placeholder, addTile);
   else board.insertBefore(colDrag.placeholder, after);
@@ -835,15 +835,19 @@ function startColumnLift() {
   col.style.display = "none";
   col.after(ph);
 
-  beginAutoScroll((x) => placeColumnPlaceholder(x));
+  beginAutoScroll((x, y) => placeColumnPlaceholder(x, y));
 }
 
-function columnAfterElement(x) {
+// The column the placeholder should sit before. Ordering follows the layout:
+// vertical (by Y) in stacked view, horizontal (by X) in side-by-side columns —
+// so dragging a set feels just like dragging a task.
+function columnAfterElement(x, y) {
+  const stacked = board.classList.contains("stacked");
   const cols = [...board.querySelectorAll(".column")].filter((c) => c.style.display !== "none");
   return cols.reduce(
     (closest, child) => {
       const box = child.getBoundingClientRect();
-      const offset = x - box.left - box.width / 2;
+      const offset = stacked ? y - box.top - box.height / 2 : x - box.left - box.width / 2;
       if (offset < 0 && offset > closest.offset) return { offset, element: child };
       return closest;
     },
