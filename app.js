@@ -1190,7 +1190,6 @@ function render() {
       <div class="card-list"></div>
       <div class="add-row"><input class="add-input" type="text" placeholder="+ Add something" aria-label="Add something" /></div>
     `;
-    column.querySelector(".col-grip").style.color = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
     // Clicking the header (anywhere but the name text / delete) collapses or
     // expands the set. The name text and delete stop their own clicks; a click
     // that ends a drag is ignored via justColumnDragged.

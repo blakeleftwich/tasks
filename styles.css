@@ -713,13 +713,13 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
 }
 body.col-dragging-active { cursor: grabbing; user-select: none; }
 
-/* Grab handle (its colour = the set's colour). */
+/* Grab handle — neutral (uses the theme's muted colour). */
 .col-grip {
   flex: none;
   display: inline-flex;
   align-items: center;
   cursor: grab;
-  opacity: 0.9;
+  color: var(--muted);
 }
 .col-grip svg { display: block; }
 .column-header:active .col-grip { cursor: grabbing; }
