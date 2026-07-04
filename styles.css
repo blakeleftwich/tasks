@@ -104,6 +104,68 @@ html[data-theme="matrix"] {
   --todo: #39ff14;
 }
 
+/* --- Beach: a little seaside scene — sky→sand gradient with a sun, a frosted
+   header the sky peeks through, rolling surf along the bottom, and a brolly on
+   the sand. Decorations sit behind the app (z-index:-1, pointer-events:none),
+   so they show through the transparent gutters. --- */
+html[data-theme="beach"] {
+  --bg: #dff1f8;
+  --surface: #fffdf5;
+  --text: #1f4a58;
+  --muted: #6b96a4;
+  --border: #cbe6ef;
+  --hover: #dcf0f7;
+  --hover-border: #a9d4e2;
+  --accent-soft: #d0ecf6;
+  --field: #f4fbfd;
+  --todo: #ff9b21; /* warm sun accent */
+}
+html[data-theme="beach"] body {
+  background:
+    radial-gradient(150px 150px at 87% 84px, rgba(255, 214, 92, 0.95), rgba(255, 214, 92, 0) 68%),
+    linear-gradient(180deg, #a6ddf1 0%, #d7eff6 24%, #f6ecd6 64%, #efd9ad 100%);
+  background-attachment: fixed;
+}
+html[data-theme="beach"] .app-header {
+  background: rgba(255, 253, 245, 0.8);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+html[data-theme="beach"] body::before {
+  content: "⛱️";
+  position: fixed;
+  left: 14px;
+  bottom: 40px;
+  font-size: 44px;
+  line-height: 1;
+  z-index: -1;
+  pointer-events: none;
+  transform: rotate(-6deg);
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.12));
+}
+html[data-theme="beach"] body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 120px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1200'%20height='120'%20viewBox='0%200%201200%20120'%20preserveAspectRatio='none'%3E%3Cpath%20fill='%237fc9e3'%20fill-opacity='0.5'%20d='M0,60%20C100,20%20200,20%20300,60%20C400,100%20500,100%20600,60%20C700,20%20800,20%20900,60%20C1000,100%201100,100%201200,60%20L1200,120%20L0,120%20Z'/%3E%3Cpath%20fill='%233f9dc4'%20fill-opacity='0.6'%20d='M0,78%20C100,108%20200,108%20300,78%20C400,48%20500,48%20600,78%20C700,108%20800,108%20900,78%20C1000,48%201100,48%201200,78%20L1200,120%20L0,120%20Z'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position-y: 100%;
+  background-size: 1200px 120px;
+  animation: beach-surf 16s linear infinite;
+}
+@keyframes beach-surf {
+  from { background-position-x: 0; }
+  to { background-position-x: -1200px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="beach"] body::after { animation: none; }
+}
+
 /* ---------- Header ---------- */
 .app-header {
   display: grid;

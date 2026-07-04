@@ -1,5 +1,18 @@
 # Session Log
 
+## 2026-07-04 (later) — Beach theme 🏖️
+
+- Added a **"Beach"** theme (15th; in the cycle + labelled "Beach 🏖️"). More than a palette — it's a little scene, all CSS scoped to `html[data-theme="beach"]`:
+  - Beachy palette (sky/sea blues, sandy surface, deep-teal text, sunny-orange accent).
+  - `body` background = sky→sand `linear-gradient` + a `radial-gradient` **sun**; `background-attachment: fixed`.
+  - **Frosted header** (`rgba` + `backdrop-filter: blur`) so the sky peeks through.
+  - **Animated rolling surf** along the bottom (`body::after`, inline SVG data-URI wave, `@keyframes beach-surf` shifting `background-position-x`; disabled under `prefers-reduced-motion`).
+  - A **beach umbrella ⛱️** planted bottom-left (`body::before`).
+  - Decorations are `z-index:-1` + `pointer-events:none` (show through the transparent gutters, never block clicks/drag) and vanish when you switch themes.
+- Verified: palette resolves w/ good contrast; surf SVG decodes 1200×120 + animates; umbrella + sun + frosted header present; switching away removes the scene; no console errors.
+
+---
+
 ## 2026-07-04 — "New Set" wording; optional tabs; dashed add-box; CSS var bugfix
 
 - **"New Task Set" → "New Set"** everywhere (default column, addCategory, the add tile label). **Add field**: "+ Add a task…" → **"+ Add something"**.

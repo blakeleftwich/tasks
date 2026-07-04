@@ -2570,12 +2570,14 @@ const THEMES = [
   "sky", "sunny", "bubblegum", // bright
   "midnight", "carbon", // dark
   "neon", "synthwave", "matrix", // neon
+  "beach", // scene
 ];
 const THEME_LABELS = {
   default: "Default", sand: "Sand", mint: "Mint", rose: "Rose", lavender: "Lavender", slate: "Slate",
   sky: "Sky", sunny: "Sunny", bubblegum: "Bubblegum",
   midnight: "Midnight", carbon: "Carbon",
   neon: "Neon", synthwave: "Synthwave", matrix: "Matrix",
+  beach: "Beach 🏖️",
 };
 
 function themeBoardKey() {
