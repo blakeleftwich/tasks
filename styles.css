@@ -676,9 +676,8 @@ body.tab-dragging-active { cursor: grabbing; user-select: none; }
   gap: 8px;
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--border);
-  cursor: grab;
+  cursor: pointer; /* click to collapse/expand, like a task header (grip keeps grab) */
 }
-.column-header:active { cursor: grabbing; }
 
 /* Collapsed state — the header stays, the body hides (click the header to toggle). */
 .column.collapsed .column-header { border-bottom: none; }
