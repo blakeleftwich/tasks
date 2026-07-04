@@ -1,5 +1,15 @@
 # Session Log
 
+## 2026-07-04 (later) — Collapsible task sets
+
+- Each task set (column) now has a **collapse caret** (`.col-collapse`, ▾ in the header, rotates when collapsed). Clicking it hides that set's card-list / add-row / show-completed button (and skips rendering its cards); the header stays.
+- Per-set + **persisted** across reloads via `collapsedSets` (localStorage array of column keys) + `saveCollapsed()`. `render()` adds `.collapsed` and skips the body when collapsed.
+- Caret is excluded from the column drag (`onColumnPointerDown` closest check) and stops propagation so it doesn't rename/drag.
+- CSS: `.column.collapsed` hides body + drops the header border; in **column mode** a collapsed set shrinks to a slim header (`flex:0 0 auto; width:max-content; min-width:0; max-width:240px`) — needed `min-width:0` to beat the base `.column min-width:280`. In **stacked** mode it's a thin full-width header row.
+- Verified: collapse/expand per set, persists across reload, caret doesn't trigger rename/drag, slim in column mode (191px) vs expanded (933px); no console errors.
+
+---
+
 ## 2026-07-04 (later) — Beach theme 🏖️
 
 - Added a **"Beach"** theme (15th; in the cycle + labelled "Beach 🏖️"). More than a palette — it's a little scene, all CSS scoped to `html[data-theme="beach"]`:

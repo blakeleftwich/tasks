@@ -170,6 +170,22 @@ let propsOpenForId = null; // card whose priority/due/colour options are reveale
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
 let searchQuery = ""; // lowercased search filter
 let shownCompletedCols = new Set(); // task-set (column) keys currently revealing completed tasks
+// Collapsed task-set (column) keys — a local view preference, remembered across reloads.
+let collapsedSets = (() => {
+  try {
+    const a = JSON.parse(localStorage.getItem("collapsedSets"));
+    return new Set(Array.isArray(a) ? a : []);
+  } catch (e) {
+    return new Set();
+  }
+})();
+function saveCollapsed() {
+  try {
+    localStorage.setItem("collapsedSets", JSON.stringify([...collapsedSets]));
+  } catch (e) {
+    /* ignore */
+  }
+}
 
 let supa = null; // Supabase client (when configured)
 let user = null; // signed-in user (when authed)
@@ -781,7 +797,7 @@ function removeColumnListeners() {
 function onColumnPointerDown(e, column) {
   const touch = isTouch(e);
   if (!touch && e.button !== 0) return;
-  if (e.target.closest("input, textarea, .col-delete")) return; // not renaming / deleting
+  if (e.target.closest("input, textarea, .col-delete, .col-collapse")) return; // not renaming / deleting / collapsing
   justColumnDragged = false;
   const rect = column.getBoundingClientRect();
   colDrag = {
@@ -1192,10 +1208,12 @@ function render() {
     const items = all.filter(isVisibleTask);
 
     const column = document.createElement("section");
-    column.className = "column";
+    const collapsed = collapsedSets.has(col.key);
+    column.className = "column" + (collapsed ? " collapsed" : "");
     column.dataset.col = col.key;
     column.innerHTML = `
       <div class="column-header">
+        <button class="col-collapse" type="button" title="Collapse / expand" aria-label="Collapse or expand task set">▾</button>
         <span class="dot"></span>
         <button class="column-name" type="button" title="Click to rename"></button>
         <span class="count">${items.length}</span>
@@ -1205,6 +1223,13 @@ function render() {
       <div class="add-row"><input class="add-input" type="text" placeholder="+ Add something" aria-label="Add something" /></div>
     `;
     column.querySelector(".dot").style.background = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+    column.querySelector(".col-collapse").addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (collapsedSets.has(col.key)) collapsedSets.delete(col.key);
+      else collapsedSets.add(col.key);
+      saveCollapsed();
+      render();
+    });
     const nameEl = column.querySelector(".column-name");
     nameEl.textContent = col.label;
     nameEl.addEventListener("click", () => {
@@ -1220,10 +1245,10 @@ function render() {
     column.querySelector(".column-header").addEventListener("pointerdown", (e) => onColumnPointerDown(e, column));
 
     const list = column.querySelector(".card-list");
-    items.forEach((task) => list.appendChild(renderCard(task)));
+    if (!collapsed) items.forEach((task) => list.appendChild(renderCard(task)));
 
-    // Low-profile "Show completed" toggle — only when this task set has completed items.
-    if (completedInCol.length > 0) {
+    // Low-profile "Show completed" toggle — only when expanded and it has completed items.
+    if (!collapsed && completedInCol.length > 0) {
       const shown = shownCompletedCols.has(col.key);
       const scBtn = document.createElement("button");
       scBtn.className = "show-completed" + (shown ? " on" : "");
