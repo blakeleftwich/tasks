@@ -1,5 +1,14 @@
 # Session Log
 
+## 2026-07-04 (later) — Non-date-based (fixes "disappearing" tasks)
+
+- **Root cause of the "missing tasks"**: the app was still date-scoped (a hangover from the Daily Task Board) — `group(day, status)` filtered by `t.day === selectedDate`, so a set only showed tasks created on the selected day (defaulting to today). Old tasks were fine in the DB, just filed under earlier dates; after carry-over was removed there was no way to surface them. User asked to switch to non-date-based.
+- **Change**: `group(status)` / `reindex(status)` no longer filter by day — a set shows ALL its tasks (active tab + status), ordered by `position` with `day` as a tie-breaker (so the pre-merge interleave is deterministic; unique positions after any reorder make it moot). Updated all callers (render, addTask/quickAddTask, moveTaskTo, deleteTask, visibleColumn). New tasks still set `day: todayKey()` (DB `tasks.day` is `NOT NULL`) but it's display-irrelevant now.
+- Removed the **date navigation** entirely: the `.date-nav` markup (prev/next/today/date-picker/date-display), its handlers, the resize date listener, `selectedDate`, and now-dead date helpers (`formatLong`/`formatHeaderDate`/`shiftDay`). Header grid trimmed to 2 columns. `formatShort` kept for the due-date badge.
+- Verified: tasks seeded across today/yesterday/last week/last month all render in their sets; add + move + reorder work; date nav gone; no console errors. Non-destructive (filter-only) — user's existing tasks reappear.
+
+---
+
 ## 2026-07-04 (later) — Click-header-to-collapse (sets + cards)
 
 - **Sets**: removed the collapse caret. Clicking the **set header** (anywhere but the name text or delete ×) now toggles collapse; the name text still edits, and a click that ends a drag is ignored (`justColumnDragged`). Handler on `.column-header` click; removed `.col-collapse` markup + CSS.

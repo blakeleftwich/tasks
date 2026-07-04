@@ -164,7 +164,6 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 
 /* ---------- State ---------- */
 let tasks = []; // flat array of task objects
-let selectedDate = todayKey();
 let expandedCardId = null; // the card expanded in place (view state, not persisted)
 let propsOpenForId = null; // card whose priority/due/colour options are revealed
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
@@ -216,27 +215,9 @@ function keyToDate(key) {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d);
 }
-function formatLong(key) {
-  const opts = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
-  let label = keyToDate(key).toLocaleDateString(undefined, opts);
-  if (key === todayKey()) label = "Today · " + label;
-  return label;
-}
-// The header date — compact on narrow (phone) screens so it stays one line.
-function formatHeaderDate(key) {
-  if (window.innerWidth <= 600) {
-    if (key === todayKey()) return "Today";
-    return keyToDate(key).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  }
-  return formatLong(key);
-}
+// Short date for the due-date badge (the only date still shown).
 function formatShort(key) {
   return keyToDate(key).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-function shiftDay(key, delta) {
-  const date = keyToDate(key);
-  date.setDate(date.getDate() + delta);
-  return toKey(date);
 }
 
 /* =====================================================================
@@ -333,11 +314,14 @@ function getTask(id) {
   return tasks.find((t) => t.id === id) || null;
 }
 
-// Ordered tasks for a given day + column, scoped to the active tab.
-function group(day, status) {
+// Ordered tasks for a column (task set), scoped to the active tab. Not date-
+// based: a set shows all its tasks regardless of the day they were created.
+// (`day` still breaks position ties from before the merge; once a set is
+// reordered, positions are unique and it no longer matters.)
+function group(status) {
   return tasks
-    .filter((t) => t.day === day && t.status === status && inActiveTab(t))
-    .sort((a, b) => a.position - b.position);
+    .filter((t) => t.status === status && inActiveTab(t))
+    .sort((a, b) => a.position - b.position || (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
 }
 
 function isOverdue(task) {
@@ -370,8 +354,8 @@ function remoteDelete(id) {
   }
 }
 
-function reindex(day, status) {
-  const g = group(day, status);
+function reindex(status) {
+  const g = group(status);
   g.forEach((t, i) => {
     t.position = i;
     t.updated_at = nowIso();
@@ -380,7 +364,7 @@ function reindex(day, status) {
 }
 
 function addTask(status) {
-  const task = normalizeTask({ day: selectedDate, status, tab: activeTabKey, position: group(selectedDate, status).length });
+  const task = normalizeTask({ day: todayKey(), status, tab: activeTabKey, position: group(status).length });
   tasks.push(task);
   expandedCardId = task.id; // open the new card so its title is editable
   selectedCardId = task.id;
@@ -393,7 +377,7 @@ function addTask(status) {
 
 // Inline add: create a named task and keep the add field focused for the next one.
 function quickAddTask(status, title) {
-  const task = normalizeTask({ day: selectedDate, status, tab: activeTabKey, position: group(selectedDate, status).length, title });
+  const task = normalizeTask({ day: todayKey(), status, tab: activeTabKey, position: group(status).length, title });
   tasks.push(task);
   persist([task]);
   render();
@@ -411,10 +395,10 @@ function updateTask(id, fields) {
 function deleteTask(id) {
   const idx = tasks.findIndex((t) => t.id === id);
   if (idx === -1) return;
-  const { day, status } = tasks[idx];
+  const { status } = tasks[idx];
   tasks.splice(idx, 1);
   if (expandedCardId === id) expandedCardId = null;
-  const changed = reindex(day, status);
+  const changed = reindex(status);
   saveLocal();
   remoteDelete(id);
   if (changed.length) persist(changed);
@@ -449,7 +433,7 @@ function moveTaskTo(id, toStatus, beforeId) {
   task.updated_at = nowIso();
 
   // Order: rebuild target column with the dragged card placed correctly.
-  const target = group(selectedDate, toStatus).filter((t) => t.id !== id);
+  const target = group(toStatus).filter((t) => t.id !== id);
   let insertAt = target.length;
   if (beforeId != null) {
     const i = target.findIndex((t) => t.id === beforeId);
@@ -462,7 +446,7 @@ function moveTaskTo(id, toStatus, beforeId) {
   });
 
   const changed = new Map(target.map((t) => [t.id, t]));
-  if (fromStatus !== toStatus) reindex(selectedDate, fromStatus).forEach((t) => changed.set(t.id, t));
+  if (fromStatus !== toStatus) reindex(fromStatus).forEach((t) => changed.set(t.id, t));
   saveLocal();
   persist([...changed.values()]);
   render();
@@ -1184,13 +1168,11 @@ function render() {
   const boardTitle = currentBoardName();
   document.getElementById("app-title").textContent = boardTitle;
   document.title = boardTitle === "New Project" ? boardTitle : `${boardTitle} · New Project`;
-  document.getElementById("date-display").textContent = formatHeaderDate(selectedDate);
-  document.getElementById("date-picker").value = selectedDate;
   renderTabs();
 
   board.innerHTML = "";
   categories.forEach((col, index) => {
-    const all = group(selectedDate, col.key);
+    const all = group(col.key);
     const completedInCol = all.filter((t) => t.completed);
     const items = all.filter(isVisibleTask);
 
@@ -2579,7 +2561,7 @@ function isVisibleTask(task) {
 }
 
 function visibleColumn(status) {
-  return group(selectedDate, status).filter(isVisibleTask);
+  return group(status).filter(isVisibleTask);
 }
 
 function moveSelection(dx, dy) {
@@ -2702,12 +2684,6 @@ function cycleTheme() {
 document.getElementById("theme-btn").addEventListener("click", cycleTheme);
 applyBoardTheme();
 
-// Keep the header date in its compact/long form as the viewport changes (rotate).
-window.addEventListener("resize", () => {
-  const el = document.getElementById("date-display");
-  if (el) el.textContent = formatHeaderDate(selectedDate);
-});
-
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden) return; // the modal owns the keyboard while open
   const typing = !!(e.target.matches && e.target.matches("input, textarea, select"));
@@ -2790,37 +2766,6 @@ modalOverlay.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (!modalOverlay.hidden && e.key === "Escape") closeModal(false);
-});
-
-/* =====================================================================
- * Date navigation
- * ===================================================================== */
-document.getElementById("prev-day").addEventListener("click", () => {
-  selectedDate = shiftDay(selectedDate, -1);
-  render();
-});
-document.getElementById("next-day").addEventListener("click", () => {
-  selectedDate = shiftDay(selectedDate, 1);
-  render();
-});
-document.getElementById("today-btn").addEventListener("click", () => {
-  selectedDate = todayKey();
-  render();
-});
-document.getElementById("date-picker").addEventListener("change", (e) => {
-  if (e.target.value) {
-    selectedDate = e.target.value;
-    render();
-  }
-});
-// Click the date text to open the native date picker.
-document.getElementById("date-display").addEventListener("click", () => {
-  const picker = document.getElementById("date-picker");
-  try {
-    picker.showPicker();
-  } catch (e) {
-    picker.focus();
-  }
 });
 
 /* =====================================================================

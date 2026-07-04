@@ -169,7 +169,7 @@ html[data-theme="beach"] body::after {
 /* ---------- Header ---------- */
 .app-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   padding: 16px clamp(16px, 4vw, 40px);
