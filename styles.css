@@ -1154,6 +1154,78 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
 .checklist-input:focus { outline: none; border-color: var(--todo); }
 
 /* "More" toggle + collapsible menu fields (priority / due / colour) */
+/* "+ Add something" inside a card's body + its little block-type menu */
+.block-add { margin-top: 6px; }
+.block-add-btn {
+  display: block;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 5px 8px;
+  margin-left: -8px; /* line the label up with the blocks above */
+  border-radius: 8px;
+}
+.block-add-btn:hover { color: var(--text); background: var(--hover); }
+
+/* Attachments (image thumbnails + file chips) */
+.card-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.attach-item { position: relative; cursor: pointer; }
+.attach-image img {
+  display: block;
+  max-height: 120px;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.attach-image:hover img { border-color: var(--hover-border); }
+.attach-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-file:hover .attach-name { border-color: var(--hover-border); background: var(--hover); }
+.attach-del {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.attach-item:hover .attach-del { opacity: 1; }
+.attach-del:hover { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+
 .props-toggle {
   display: block;
   margin: 8px 0 0 auto; /* spacing + push to the corner */
@@ -1449,5 +1521,6 @@ body { padding-bottom: 46px; }
   .col-delete,
   .tab-delete,
   .card .delete-btn,
-  .checklist-del { opacity: 0.55; }
+  .checklist-del,
+  .attach-del { opacity: 0.55; }
 }

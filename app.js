@@ -166,6 +166,7 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 let tasks = []; // flat array of task objects
 let expandedCardId = null; // the card expanded in place (view state, not persisted)
 let propsOpenForId = null; // card whose priority/due/colour options are revealed
+const emptyBlocksOpen = new Map(); // taskId -> Set of body blocks chosen via "+ Add something" but still empty
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
 let searchQuery = ""; // lowercased search filter
 let shownCompletedCols = new Set(); // task-set (column) keys currently revealing completed tasks
@@ -197,6 +198,7 @@ let tagSyncable = false; // whether the tasks.tag column exists yet
 let tabsSyncable = false; // whether the boards.tabs column exists yet
 let taskTabSyncable = false; // whether the tasks.tab column exists yet
 let assigneeSyncable = false; // whether the tasks.assignee column exists yet
+let attachmentsSyncable = false; // whether the tasks.attachments column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -307,6 +309,7 @@ function normalizeTask(t) {
     tag: t.tag || null,
     assignee: (typeof t.assignee === "string" && t.assignee.trim()) || null,
     checklist: Array.isArray(t.checklist) ? t.checklist : [],
+    attachments: Array.isArray(t.attachments) ? t.attachments : [],
     completed: !!t.completed,
     updated_at: t.updated_at || nowIso(),
   };
@@ -1435,6 +1438,15 @@ function renderCard(task) {
   // Checklist.
   renderChecklist(node, task, checklist);
 
+  // Body blocks: only blocks with content show; everything else hides behind
+  // the single "+ Add something" button (blocks just chosen there stay visible
+  // while still empty so the user can fill them in).
+  const openBlocks = emptyBlocksOpen.get(task.id) || new Set();
+  notesEdit.hidden = !(task.notes && task.notes.trim()) && !openBlocks.has("text");
+  node.querySelector(".card-checklist").hidden = checklist.length === 0 && !openBlocks.has("checklist");
+  renderAttachments(node, task);
+  renderBlockAdd(node, task);
+
   // Menu fields: tag, assignee, due date, colour (at the bottom).
   renderTagSelector(node, task);
   renderAssigneeSelector(node, task);
@@ -1500,6 +1512,7 @@ function expandCard(id) {
   expandedCardId = id;
   selectedCardId = id;
   propsOpenForId = null; // options start collapsed each time a card opens
+  emptyBlocksOpen.clear(); // unfilled blocks reset too
   setCardExpanded(node, true);
 }
 
@@ -1507,6 +1520,7 @@ function collapseCard() {
   if (!expandedCardId) return;
   setCardExpanded(board.querySelector(`.card[data-id="${expandedCardId}"]`), false);
   expandedCardId = null;
+  emptyBlocksOpen.clear();
 }
 
 /* ---------- FLIP: glide cards to their new spot on the next render ---------- */
@@ -1634,6 +1648,206 @@ function textEdit(opts) {
   }
 
   return wrap;
+}
+
+/* ---------- "+ Add something" body blocks ----------
+ * A card's body starts empty; this menu is the one place to add to it.
+ * Extend BLOCK_TYPES to offer new kinds of content later. Text and
+ * checklist are singletons, so they leave the menu once present. */
+const BLOCK_TYPES = [
+  { key: "text", icon: "📝", label: "Text" },
+  { key: "checklist", icon: "☑️", label: "Checklist" },
+  { key: "image", icon: "🖼️", label: "Image" },
+  { key: "file", icon: "📎", label: "File" },
+];
+
+function renderBlockAdd(node, task) {
+  const btn = node.querySelector(".block-add-btn");
+  const menu = node.querySelector(".block-menu");
+  const picker = node.querySelector(".attach-input");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willOpen = menu.hidden;
+    document.querySelectorAll(".tag-menu").forEach((m) => (m.hidden = true));
+    if (!willOpen) return;
+    buildBlockMenu(menu, node, task, picker);
+    const r = btn.getBoundingClientRect();
+    menu.style.left = r.left + "px";
+    menu.style.top = r.bottom + 4 + "px";
+    menu.style.minWidth = "150px";
+    menu.hidden = false;
+  });
+  picker.addEventListener("click", (e) => e.stopPropagation());
+  picker.addEventListener("change", () => {
+    const file = picker.files && picker.files[0];
+    picker.value = "";
+    if (file) addAttachment(task, file, picker.dataset.kind);
+  });
+}
+
+function buildBlockMenu(menu, node, task, picker) {
+  menu.innerHTML = "";
+  const open = emptyBlocksOpen.get(task.id) || new Set();
+  const present = {
+    text: !!(task.notes && task.notes.trim()) || open.has("text"),
+    checklist: (task.checklist || []).length > 0 || open.has("checklist"),
+  };
+  BLOCK_TYPES.forEach((b) => {
+    if (present[b.key]) return;
+    const pick = document.createElement("button");
+    pick.className = "tag-menu-pick";
+    pick.textContent = b.icon + " " + b.label;
+    pick.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.hidden = true;
+      chooseBlock(node, task, b.key, picker);
+    });
+    menu.appendChild(pick);
+  });
+}
+
+function chooseBlock(node, task, key, picker) {
+  if (key === "image" || key === "file") {
+    picker.accept = key === "image" ? "image/*" : "";
+    picker.dataset.kind = key;
+    picker.click();
+    return;
+  }
+  const open = emptyBlocksOpen.get(task.id) || new Set();
+  open.add(key);
+  emptyBlocksOpen.set(task.id, open);
+  if (key === "text") {
+    const wrap = node.querySelector(".card-notes-wrap");
+    wrap.hidden = false;
+    wrap.startEdit(); // straight into typing
+  } else if (key === "checklist") {
+    const box = node.querySelector(".card-checklist");
+    box.hidden = false;
+    box.querySelector(".checklist-input").focus();
+  }
+}
+
+/* ---------- Attachments (images + files) ----------
+ * Signed in: the file goes to the public "attachments" storage bucket and the
+ * task row only carries small metadata (never file bytes — every realtime
+ * change re-pulls task rows, so embedded files would multiply egress).
+ * Signed out: stored locally as a data URL (images get downscaled), capped so
+ * localStorage stays healthy. */
+async function addAttachment(task, file, kind) {
+  kind = kind === "image" || (file.type || "").startsWith("image/") ? "image" : "file";
+  const att = { id: makeId(), kind, name: file.name, size: file.size };
+  try {
+    if (user && supa) {
+      const clean = file.name.replace(/[^\w.\-]+/g, "_");
+      const path = (currentBoardId || "personal") + "/" + att.id + "-" + clean;
+      const up = await supa.storage.from("attachments").upload(path, file);
+      if (up.error) throw up.error;
+      att.path = path;
+      att.url = supa.storage.from("attachments").getPublicUrl(path).data.publicUrl;
+    } else {
+      att.url = kind === "image" ? await imageToDataUrl(file) : await fileToDataUrl(file);
+      if (att.url.length > 1_400_000) {
+        alert("That file is too big to keep on this device (about 1 MB max while signed out). Sign in to attach bigger files.");
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("Attachment failed", err);
+    alert("Couldn't attach that file: " + (err.message || err));
+    return;
+  }
+  const list = Array.isArray(task.attachments) ? task.attachments.slice() : [];
+  list.push(att);
+  updateAndRender(task.id, { attachments: list });
+}
+
+function renderAttachments(node, task) {
+  const box = node.querySelector(".card-attachments");
+  const list = Array.isArray(task.attachments) ? task.attachments : [];
+  box.hidden = list.length === 0;
+  list.forEach((att) => {
+    const item = document.createElement("div");
+    item.className = "attach-item " + (att.kind === "image" ? "attach-image" : "attach-file");
+    item.title = att.name;
+    if (att.kind === "image") {
+      const img = document.createElement("img");
+      img.src = att.url;
+      img.alt = att.name;
+      img.loading = "lazy";
+      item.appendChild(img);
+    } else {
+      const chip = document.createElement("span");
+      chip.className = "attach-name";
+      chip.textContent = "📎 " + att.name;
+      item.appendChild(chip);
+    }
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openAttachment(att);
+    });
+    const del = document.createElement("button");
+    del.className = "attach-del";
+    del.textContent = "×";
+    del.title = "Remove attachment";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeAttachment(task, att);
+    });
+    item.appendChild(del);
+    box.appendChild(item);
+  });
+}
+
+function openAttachment(att) {
+  if (!att.url) return;
+  if (att.url.startsWith("data:")) {
+    // Browsers block navigating straight to data: URLs — hand over a blob URL.
+    fetch(att.url)
+      .then((r) => r.blob())
+      .then((b) => {
+        const u = URL.createObjectURL(b);
+        window.open(u, "_blank");
+        setTimeout(() => URL.revokeObjectURL(u), 60_000);
+      });
+  } else {
+    window.open(att.url, "_blank");
+  }
+}
+
+function removeAttachment(task, att) {
+  const list = (task.attachments || []).filter((a) => a.id !== att.id);
+  updateAndRender(task.id, { attachments: list });
+  if (att.path && supa && user) {
+    supa.storage.from("attachments").remove([att.path]); // best-effort cleanup
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error || new Error("Couldn't read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+// Downscale + re-encode big images so the local copy stays small.
+async function imageToDataUrl(file) {
+  const raw = await fileToDataUrl(file);
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res;
+    img.onerror = rej;
+    img.src = raw;
+  });
+  const MAX = 1400;
+  const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+  if (scale === 1 && raw.length < 500_000) return raw;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
 }
 
 /* ---------- Checklist (sub-steps) ---------- */
@@ -2053,6 +2267,7 @@ function rowFromTask(t) {
   if (tagSyncable) row.tag = t.tag || null;
   if (taskTabSyncable) row.tab = t.tab || null; // note: distinct from `tag` above
   if (assigneeSyncable) row.assignee = t.assignee || null;
+  if (attachmentsSyncable) row.attachments = t.attachments || [];
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -2107,6 +2322,8 @@ async function setUser(nextUser) {
     taskTabSyncable = !probeTaskTab.error;
     const probeAssignee = await supa.from("tasks").select("assignee").limit(1);
     assigneeSyncable = !probeAssignee.error; // false until supabase-assignee.sql is run
+    const probeAttach = await supa.from("tasks").select("attachments").limit(1);
+    attachmentsSyncable = !probeAttach.error; // false until supabase-attachments.sql is run
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
     loadTabsForBoard(); // this board's tabs (+ their columns)
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
