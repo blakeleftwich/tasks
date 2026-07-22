@@ -1037,6 +1037,7 @@ body.tab-dragging-active { touch-action: none; }
 }
 .card-notes-wrap:hover .block-del,
 .card-header-wrap:hover .block-del,
+.card-checklist:hover .block-del,
 .attach-block:hover .block-del { opacity: 0.4; }
 .block-del:hover { opacity: 1; color: #ef4444; }
 
@@ -1128,11 +1129,12 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
 /* Checklist blocks share the text block's field box — each block reads as
    one unit, which also makes it feel like the draggable thing it is. */
 .card-checklist {
+  position: relative; /* anchors the corner × */
   margin-top: 8px;
   background: var(--field);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 9px;
+  padding: 7px 24px 7px 9px; /* right gap keeps step ×s clear of the corner × */
 }
 
 .checklist-items {

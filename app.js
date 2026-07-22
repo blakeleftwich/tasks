@@ -2026,6 +2026,7 @@ function renderChecklistBlock(task, block) {
   });
 
   wrap.append(list, addInput);
+  wrap.appendChild(blockDelButton(task, block)); // removes the whole checklist
   return wrap;
 }
 
