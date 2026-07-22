@@ -1780,16 +1780,39 @@ function pruneEmptyBlocks(taskId) {
   }
 }
 
-function removeBlock(taskId, blockId) {
+async function removeBlock(taskId, blockId) {
   const task = getTask(taskId);
   if (!task) return;
   const block = task.blocks.find((b) => b.id === blockId);
+  if (!block) return;
+  // Only ask when something would actually be lost (empty blocks just go).
+  if (blockHasContent(block)) {
+    const ok = await confirmModal(blockDeletePrompt(block));
+    if (!ok) return;
+  }
   task.blocks = task.blocks.filter((b) => b.id !== blockId);
-  if (block && block.path && supa && user) {
+  if (block.path && supa && user) {
     supa.storage.from("attachments").remove([block.path]); // best-effort cleanup
   }
   commitBlocks(task);
   render();
+}
+
+function blockDeletePrompt(block) {
+  const snip = (s) => (s.length > 60 ? s.slice(0, 57) + "…" : s);
+  if (block.type === "checklist") {
+    const n = block.items.length;
+    return {
+      title: "Delete checklist?",
+      message: `This checklist and its ${n} step${n === 1 ? "" : "s"} will be permanently deleted.`,
+    };
+  }
+  if (block.type === "image") return { title: "Delete image?", message: `“${block.name}” will be permanently deleted.` };
+  if (block.type === "file") return { title: "Delete file?", message: `“${block.name}” will be permanently deleted.` };
+  return {
+    title: block.type === "header" ? "Delete header?" : "Delete text?",
+    message: `“${snip(block.text.trim())}” will be permanently deleted.`,
+  };
 }
 
 // The small × in a text/header block's corner.
@@ -2063,9 +2086,18 @@ function updateChecklistText(taskId, blockId, itemId, text) {
   commitBlocks(found.task);
 }
 
-function deleteChecklistItem(taskId, blockId, itemId) {
+async function deleteChecklistItem(taskId, blockId, itemId) {
   const found = checklistBlockOf(taskId, blockId);
-  if (!found) return;
+  const item = found && found.block.items.find((i) => i.id === itemId);
+  if (!item) return;
+  const text = (item.text || "").trim();
+  const ok = await confirmModal({
+    title: "Delete step?",
+    message: text
+      ? `“${text.length > 60 ? text.slice(0, 57) + "…" : text}” will be permanently deleted.`
+      : "This step will be permanently deleted.",
+  });
+  if (!ok) return;
   found.block.items = found.block.items.filter((i) => i.id !== itemId);
   commitBlocks(found.task);
   render();
@@ -3120,9 +3152,11 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Click outside the expanded card to collapse it.
+// Click outside the expanded card to collapse it (answering a confirm
+// dialog doesn't count as leaving the card).
 document.addEventListener("click", (e) => {
   if (!expandedCardId) return;
+  if (e.target.closest("#modal-overlay")) return;
   const card = e.target.closest(".card");
   if (!card || card.dataset.id !== expandedCardId) collapseCard();
 });
