@@ -36,6 +36,11 @@ html, body {
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  /* Keep mobile browsers from zooming: no double-tap zoom (panning still works),
+     and no automatic text inflation on rotate. */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* ---------- Colour themes (per board; cycled with the palette button) ----------

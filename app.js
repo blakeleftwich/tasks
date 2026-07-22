@@ -2614,6 +2614,12 @@ document.getElementById("search").addEventListener("input", (e) => {
 // Using the mouse/touch hides the keyboard selection ring.
 document.addEventListener("pointerdown", () => document.body.classList.remove("kb-nav"));
 
+// iOS Safari ignores user-scalable=no for pinch gestures; blocking the
+// non-standard gesture events keeps the page at its loaded zoom level.
+// (Double-tap zoom is handled by touch-action: manipulation in CSS.)
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("gesturechange", (e) => e.preventDefault());
+
 // Stacked / side-by-side view toggle (a local view preference). Defaults to
 // stacked when the user hasn't chosen yet.
 let stackedView = (localStorage.getItem("stackedView") ?? "1") === "1";
