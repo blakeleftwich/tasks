@@ -1074,7 +1074,15 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
 .progress-chip.complete .progress-fill { background: var(--done); }
 
 /* Checklist editor (shown when expanded) */
-.card-checklist { margin-top: 8px; }
+/* Checklist blocks share the text block's field box — each block reads as
+   one unit, which also makes it feel like the draggable thing it is. */
+.card-checklist {
+  margin-top: 8px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
 
 .checklist-items {
   list-style: none;
@@ -1089,7 +1097,14 @@ body.kb-nav .card.selected { outline: 2px solid var(--todo); outline-offset: 1px
   align-items: flex-start; /* top-align so multi-line steps look right */
   gap: 6px;
 }
-.checklist-item.reordering { opacity: 0.5; }
+/* A checklist item floating as a drag clone (outside its list). */
+li.item-drag-clone {
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
 
 .checklist-handle {
   flex: none;

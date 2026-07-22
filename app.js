@@ -1666,10 +1666,10 @@ function textEdit(opts) {
  * A card can hold any number of text boxes and checklists, in order.
  * Extend BLOCK_TYPES to offer new kinds of content later. */
 const BLOCK_TYPES = [
-  { key: "text", icon: "📝", label: "Text" },
-  { key: "checklist", icon: "☑️", label: "Checklist" },
-  { key: "image", icon: "🖼️", label: "Image" },
-  { key: "file", icon: "📎", label: "File" },
+  { key: "text", label: "Text" },
+  { key: "checklist", label: "Checklist" },
+  { key: "image", label: "Image" },
+  { key: "file", label: "File" },
 ];
 
 function renderBlockAdd(node, task) {
@@ -1701,7 +1701,7 @@ function buildBlockMenu(menu, node, task, picker) {
   BLOCK_TYPES.forEach((b) => {
     const pick = document.createElement("button");
     pick.className = "tag-menu-pick";
-    pick.textContent = b.icon + " " + b.label;
+    pick.textContent = b.label;
     pick.addEventListener("click", (e) => {
       e.stopPropagation();
       menu.hidden = true;
@@ -1761,8 +1761,10 @@ function renderTextBlock(task, block) {
     displayClass: "card-notes-text",
     inputClass: "card-notes-input",
     onCommit: (v) => setTextBlock(task.id, block.id, v),
+    onDisplayClick: () => !justBlockDragged, // the click that ends a drag doesn't edit
   });
   edit.dataset.blockId = block.id;
+  edit.addEventListener("pointerdown", (e) => onBlockPointerDown(e, task.id, block.id, edit));
   return edit;
 }
 
@@ -1905,6 +1907,7 @@ function renderChecklistBlock(task, block) {
   const wrap = document.createElement("div");
   wrap.className = "card-checklist";
   wrap.dataset.blockId = block.id;
+  wrap.addEventListener("pointerdown", (e) => onBlockPointerDown(e, task.id, block.id, wrap));
 
   const list = document.createElement("ul");
   list.className = "checklist-items";
@@ -1912,12 +1915,12 @@ function renderChecklistBlock(task, block) {
     const li = document.createElement("li");
     li.className = "checklist-item" + (item.done ? " done" : "");
     li.dataset.itemId = item.id;
+    li.addEventListener("pointerdown", (e) => onItemPointerDown(e, task.id, block.id, item.id, li));
 
     const handle = document.createElement("span");
     handle.className = "checklist-handle";
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
-    handle.addEventListener("pointerdown", (e) => onChecklistHandleDown(e, task.id, block.id, li));
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -1932,6 +1935,7 @@ function renderChecklistBlock(task, block) {
       displayClass: "checklist-text-display",
       inputClass: "checklist-text-input",
       onCommit: (v) => updateChecklistText(task.id, block.id, item.id, v),
+      onDisplayClick: () => !justBlockDragged, // the click that ends a drag doesn't edit
     });
 
     const del = document.createElement("button");
@@ -1999,53 +2003,146 @@ function deleteChecklistItem(taskId, blockId, itemId) {
   render();
 }
 
-/* ---------- Checklist reorder (drag handle, pointer-based) ---------- */
-let listDrag = null;
+/* ---------- Body drag: blocks + checklist items ----------
+ * Same feel as dragging a card: mouse drags after a small move threshold (a
+ * plain click still edits), touch after a long-press; a floating clone follows
+ * the pointer over a dashed drop gap. Blocks reorder within their card; a
+ * checklist item can drop into any checklist on the same card. */
+let bodyDrag = null;
+let justBlockDragged = false; // suppress the click-to-edit that ends a drag
 
-function removeChecklistListeners() {
-  window.removeEventListener("pointermove", onChecklistMove);
-  window.removeEventListener("pointerup", onChecklistUp);
-  window.removeEventListener("pointercancel", onChecklistUp);
+function removeBodyDragListeners() {
+  window.removeEventListener("pointermove", onBodyDragMove);
+  window.removeEventListener("pointerup", onBodyDragEnd);
+  window.removeEventListener("pointercancel", onBodyDragEnd);
 }
 
-function onChecklistHandleDown(e, taskId, blockId, li) {
-  if (e.pointerType === "mouse" && e.button !== 0) return;
-  e.stopPropagation(); // keep the card itself from starting a drag
-  e.preventDefault(); // the handle is for dragging — don't scroll/select (touch + mouse)
-  listDrag = { taskId, blockId, li, ul: li.parentElement };
-  li.classList.add("reordering");
-  window.addEventListener("pointermove", onChecklistMove);
-  window.addEventListener("pointerup", onChecklistUp);
-  window.addEventListener("pointercancel", onChecklistUp);
+function onBlockPointerDown(e, taskId, blockId, el) {
+  // Items drag themselves; inputs and buttons act normally.
+  if (e.target.closest(".checklist-item, .checklist-input, button")) return;
+  beginBodyDrag(e, { kind: "block", taskId, blockId, el });
 }
 
-function onChecklistMove(e) {
-  if (!listDrag) return;
-  e.preventDefault();
-  const { ul, li } = listDrag;
-  const after = checklistAfterElement(ul, e.clientY);
-  if (after == null) ul.appendChild(li);
-  else ul.insertBefore(li, after);
+function onItemPointerDown(e, taskId, blockId, itemId, el) {
+  if (e.target.closest("input[type='checkbox'], .checklist-del")) return;
+  beginBodyDrag(e, { kind: "item", taskId, blockId, itemId, el });
 }
 
-function onChecklistUp() {
-  removeChecklistListeners();
-  if (!listDrag) return;
-  const { taskId, blockId, ul, li } = listDrag;
-  li.classList.remove("reordering");
-  const order = [...ul.querySelectorAll(".checklist-item")].map((el) => el.dataset.itemId);
-  const found = checklistBlockOf(taskId, blockId);
-  if (found) {
-    found.block.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-    commitBlocks(found.task);
+function beginBodyDrag(e, spec) {
+  const touch = isTouch(e);
+  if (!touch && e.button !== 0) return;
+  // A focused text field keeps its caret (select/copy), like cards.
+  const field = e.target.closest("textarea, input[type='text']");
+  if (field && document.activeElement === field) return;
+  e.stopPropagation(); // don't also arm the card drag underneath
+  justBlockDragged = false;
+  const rect = spec.el.getBoundingClientRect();
+  bodyDrag = {
+    ...spec,
+    active: false,
+    touch,
+    startX: e.clientX,
+    startY: e.clientY,
+    grabX: e.clientX - rect.left,
+    grabY: e.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+    lpTimer: null,
+  };
+  if (touch) {
+    bodyDrag.lpTimer = setTimeout(() => {
+      if (bodyDrag && !bodyDrag.active) {
+        liftBody();
+        buzz();
+      }
+    }, LONG_PRESS_MS);
   }
-  listDrag = null;
-  render();
+  window.addEventListener("pointermove", onBodyDragMove);
+  window.addEventListener("pointerup", onBodyDragEnd);
+  window.addEventListener("pointercancel", onBodyDragEnd);
 }
 
-function checklistAfterElement(ul, y) {
-  const items = [...ul.querySelectorAll(".checklist-item:not(.reordering)")];
-  return items.reduce(
+function onBodyDragMove(e) {
+  if (!bodyDrag) return;
+  if (!bodyDrag.active) {
+    const dist = Math.hypot(e.clientX - bodyDrag.startX, e.clientY - bodyDrag.startY);
+    if (bodyDrag.touch) {
+      // Moved before the long-press fired → the user is scrolling; let go.
+      if (dist > TOUCH_SLOP) {
+        clearTimeout(bodyDrag.lpTimer);
+        removeBodyDragListeners();
+        bodyDrag = null;
+      }
+      return;
+    }
+    if (dist < DRAG_THRESHOLD) return;
+    liftBody();
+  }
+  e.preventDefault();
+  bodyDrag.clone.style.left = e.clientX - bodyDrag.grabX + "px";
+  bodyDrag.clone.style.top = e.clientY - bodyDrag.grabY + "px";
+  placeBodyPlaceholder(e.clientY);
+  moveAutoScroll(e.clientX, e.clientY);
+}
+
+function liftBody() {
+  const d = bodyDrag;
+  d.active = true;
+  document.body.classList.add("dragging-active");
+  if (document.activeElement && d.el.contains(document.activeElement)) document.activeElement.blur();
+
+  const clone = d.el.cloneNode(true);
+  clone.classList.add("drag-clone", d.kind === "item" ? "item-drag-clone" : "block-drag-clone");
+  clone.style.width = d.width + "px";
+  clone.style.height = d.height + "px";
+  document.body.appendChild(clone);
+  d.clone = clone;
+
+  const ph = document.createElement("div");
+  ph.className = "card-placeholder";
+  ph.style.height = d.height + "px";
+  d.placeholder = ph;
+  d.el.style.display = "none";
+  d.el.after(ph);
+
+  beginAutoScroll((x, y) => placeBodyPlaceholder(y));
+}
+
+function placeBodyPlaceholder(y) {
+  const d = bodyDrag;
+  if (!d || !d.active) return;
+  if (d.kind === "block") {
+    const box = d.el.parentElement; // .card-blocks
+    const after = afterByY([...box.querySelectorAll(":scope > [data-block-id]")].filter((el) => el !== d.el), y);
+    if (after == null) box.appendChild(d.placeholder);
+    else box.insertBefore(d.placeholder, after);
+  } else {
+    const card = d.el.closest(".card");
+    const lists = [...card.querySelectorAll(".checklist-items")];
+    if (!lists.length) return;
+    // The list under the pointer, or the nearest one.
+    let target = lists.find((l) => {
+      const r = l.closest(".card-checklist").getBoundingClientRect();
+      return y >= r.top && y <= r.bottom;
+    });
+    if (!target) {
+      target = lists.reduce(
+        (best, l) => {
+          const r = l.closest(".card-checklist").getBoundingClientRect();
+          const dist = Math.min(Math.abs(y - r.top), Math.abs(y - r.bottom));
+          return dist < best.dist ? { l, dist } : best;
+        },
+        { l: lists[0], dist: Infinity }
+      ).l;
+    }
+    const after = afterByY([...target.querySelectorAll(".checklist-item")].filter((el) => el !== d.el), y);
+    if (after == null) target.appendChild(d.placeholder);
+    else target.insertBefore(d.placeholder, after);
+  }
+}
+
+function afterByY(els, y) {
+  return els.reduce(
     (closest, child) => {
       const box = child.getBoundingClientRect();
       const offset = y - box.top - box.height / 2;
@@ -2054,6 +2151,55 @@ function checklistAfterElement(ul, y) {
     },
     { offset: Number.NEGATIVE_INFINITY, element: null }
   ).element;
+}
+
+function onBodyDragEnd(e) {
+  removeBodyDragListeners();
+  endAutoScroll();
+  if (!bodyDrag) return;
+  if (bodyDrag.lpTimer) clearTimeout(bodyDrag.lpTimer);
+  const d = bodyDrag;
+  bodyDrag = null;
+  if (!d.active) return; // a tap/click — the click handlers take it from here
+
+  e.preventDefault();
+  justBlockDragged = true;
+  setTimeout(() => (justBlockDragged = false), 0);
+
+  const task = getTask(d.taskId);
+  if (task && d.kind === "block") {
+    const box = d.placeholder.parentElement;
+    const ids = [];
+    [...box.children].forEach((el) => {
+      if (el === d.placeholder) ids.push(d.blockId);
+      else if (el.dataset.blockId && el !== d.el) ids.push(el.dataset.blockId);
+    });
+    task.blocks.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    commitBlocks(task);
+  } else if (task && d.kind === "item") {
+    const list = d.placeholder.parentElement;
+    const targetId = list && list.closest(".card-checklist") ? list.closest(".card-checklist").dataset.blockId : null;
+    const from = checklistBlockOf(d.taskId, d.blockId);
+    const to = targetId ? checklistBlockOf(d.taskId, targetId) : null;
+    const item = from && from.block.items.find((i) => i.id === d.itemId);
+    if (item && to) {
+      from.block.items = from.block.items.filter((i) => i.id !== d.itemId);
+      // Index = real items sitting above the drop gap in the target list.
+      let idx = 0;
+      for (const el of list.children) {
+        if (el === d.placeholder) break;
+        if (el.classList.contains("checklist-item") && el !== d.el) idx++;
+      }
+      to.block.items.splice(idx, 0, item);
+      commitBlocks(from.task);
+    }
+  }
+
+  d.clone.remove();
+  d.placeholder.remove();
+  d.el.style.display = "";
+  document.body.classList.remove("dragging-active");
+  render();
 }
 
 function autoGrow(textarea) {
