@@ -313,7 +313,7 @@ function normalizeTask(t) {
     assignee: (typeof t.assignee === "string" && t.assignee.trim()) || null,
     checklist: blockItems(blocks),
     blocks,
-    attachments: Array.isArray(t.attachments) ? t.attachments : [],
+    attachments: blockAttachments(blocks),
     completed: !!t.completed,
     updated_at: t.updated_at || nowIso(),
   };
@@ -330,7 +330,8 @@ function normalizeBlocks(t) {
       b &&
       b.id &&
       (((b.type === "text" || b.type === "header") && typeof b.text === "string") ||
-        (b.type === "checklist" && Array.isArray(b.items)))
+        (b.type === "checklist" && Array.isArray(b.items)) ||
+        ((b.type === "image" || b.type === "file") && typeof b.url === "string"))
   );
   if (!blocks.length) {
     blocks = [];
@@ -338,13 +339,40 @@ function normalizeBlocks(t) {
     if (Array.isArray(t.checklist) && t.checklist.length)
       blocks.push({ id: makeId(), type: "checklist", items: t.checklist });
   }
-  return blocks.filter((b) => (b.type === "checklist" ? b.items.length : b.text.trim()));
+  // Attachments that predate attachment-blocks (or were written by an older
+  // client into the legacy column) join the block list at the end.
+  if (Array.isArray(t.attachments)) {
+    t.attachments.forEach((a) => {
+      if (a && a.id && a.url && !blocks.some((b) => b.id === a.id)) {
+        blocks.push({
+          id: a.id,
+          type: a.kind === "image" ? "image" : "file",
+          name: a.name || "",
+          url: a.url,
+          path: a.path,
+          size: a.size,
+        });
+      }
+    });
+  }
+  return blocks.filter((b) => blockHasContent(b));
+}
+
+function blockHasContent(b) {
+  if (b.type === "checklist") return b.items.length > 0;
+  if (b.type === "text" || b.type === "header") return !!b.text.trim();
+  return true; // image/file blocks always count
 }
 function blockNotes(blocks) {
   return blocks.filter((b) => b.type === "text" || b.type === "header").map((b) => b.text).join("\n\n");
 }
 function blockItems(blocks) {
   return blocks.filter((b) => b.type === "checklist").flatMap((b) => b.items || []);
+}
+function blockAttachments(blocks) {
+  return blocks
+    .filter((b) => b.type === "image" || b.type === "file")
+    .map((b) => ({ id: b.id, kind: b.type, name: b.name, url: b.url, path: b.path, size: b.size }));
 }
 
 function getTask(id) {
@@ -1457,7 +1485,6 @@ function renderCard(task) {
   // Body: the card's blocks (text boxes + checklists, as many of each as the
   // user added, in order), attachments, then the "+ Add something" chooser.
   renderBlocks(node, task);
-  renderAttachments(node, task);
   renderBlockAdd(node, task);
 
   // Menu fields: tag, assignee, due date, colour (at the bottom).
@@ -1731,16 +1758,22 @@ function chooseBlock(node, task, key, picker) {
   else document.querySelector(sel)?.startEdit(); // straight into typing
 }
 
-// Persist a task's blocks plus the legacy notes/checklist mirrors.
+// Persist a task's blocks plus the legacy notes/checklist/attachments mirrors.
 function commitBlocks(task) {
-  task.blocks = task.blocks.filter((b) => (b.type === "checklist" ? true : b.text.trim()));
-  updateTask(task.id, { blocks: task.blocks, notes: blockNotes(task.blocks), checklist: blockItems(task.blocks) });
+  // Keep still-empty checklists during the session; drop emptied text/headers.
+  task.blocks = task.blocks.filter((b) => b.type === "checklist" || blockHasContent(b));
+  updateTask(task.id, {
+    blocks: task.blocks,
+    notes: blockNotes(task.blocks),
+    checklist: blockItems(task.blocks),
+    attachments: blockAttachments(task.blocks),
+  });
 }
 
 function pruneEmptyBlocks(taskId) {
   const task = getTask(taskId);
   if (!task || !Array.isArray(task.blocks)) return;
-  const pruned = task.blocks.filter((b) => (b.type === "checklist" ? b.items.length : b.text.trim()));
+  const pruned = task.blocks.filter(blockHasContent);
   if (pruned.length !== task.blocks.length) {
     task.blocks = pruned;
     commitBlocks(task);
@@ -1750,7 +1783,11 @@ function pruneEmptyBlocks(taskId) {
 function removeBlock(taskId, blockId) {
   const task = getTask(taskId);
   if (!task) return;
+  const block = task.blocks.find((b) => b.id === blockId);
   task.blocks = task.blocks.filter((b) => b.id !== blockId);
+  if (block && block.path && supa && user) {
+    supa.storage.from("attachments").remove([block.path]); // best-effort cleanup
+  }
   commitBlocks(task);
   render();
 }
@@ -1776,9 +1813,38 @@ function renderBlocks(node, task) {
         ? renderChecklistBlock(task, block)
         : block.type === "header"
           ? renderHeaderBlock(task, block)
-          : renderTextBlock(task, block)
+          : block.type === "image" || block.type === "file"
+            ? renderAttachmentBlock(task, block)
+            : renderTextBlock(task, block)
     );
   });
+}
+
+function renderAttachmentBlock(task, block) {
+  const wrap = document.createElement("div");
+  wrap.className = "attach-block " + (block.type === "image" ? "attach-block-image" : "attach-block-file");
+  wrap.dataset.blockId = block.id;
+  wrap.title = block.name;
+  if (block.type === "image") {
+    const img = document.createElement("img");
+    img.src = block.url;
+    img.alt = block.name;
+    img.loading = "lazy";
+    wrap.appendChild(img);
+  } else {
+    const chip = document.createElement("span");
+    chip.className = "attach-name";
+    chip.textContent = "📎 " + block.name;
+    wrap.appendChild(chip);
+  }
+  wrap.addEventListener("click", (e) => {
+    if (justBlockDragged) return; // the click that ends a drag doesn't open
+    e.stopPropagation();
+    openAttachment(block);
+  });
+  wrap.addEventListener("pointerdown", (e) => onBlockPointerDown(e, task.id, block.id, wrap));
+  wrap.appendChild(blockDelButton(task, block));
+  return wrap;
 }
 
 function renderHeaderBlock(task, block) {
@@ -1833,18 +1899,18 @@ function setTextBlock(taskId, blockId, text) {
  * localStorage stays healthy. */
 async function addAttachment(task, file, kind) {
   kind = kind === "image" || (file.type || "").startsWith("image/") ? "image" : "file";
-  const att = { id: makeId(), kind, name: file.name, size: file.size };
+  const block = { id: makeId(), type: kind, name: file.name, size: file.size };
   try {
     if (user && supa) {
       const clean = file.name.replace(/[^\w.\-]+/g, "_");
-      const path = (currentBoardId || "personal") + "/" + att.id + "-" + clean;
+      const path = (currentBoardId || "personal") + "/" + block.id + "-" + clean;
       const up = await supa.storage.from("attachments").upload(path, file);
       if (up.error) throw up.error;
-      att.path = path;
-      att.url = supa.storage.from("attachments").getPublicUrl(path).data.publicUrl;
+      block.path = path;
+      block.url = supa.storage.from("attachments").getPublicUrl(path).data.publicUrl;
     } else {
-      att.url = kind === "image" ? await imageToDataUrl(file) : await fileToDataUrl(file);
-      if (att.url.length > 1_400_000) {
+      block.url = kind === "image" ? await imageToDataUrl(file) : await fileToDataUrl(file);
+      if (block.url.length > 1_400_000) {
         alert("That file is too big to keep on this device (about 1 MB max while signed out). Sign in to attach bigger files.");
         return;
       }
@@ -1854,46 +1920,9 @@ async function addAttachment(task, file, kind) {
     alert("Couldn't attach that file: " + (err.message || err));
     return;
   }
-  const list = Array.isArray(task.attachments) ? task.attachments.slice() : [];
-  list.push(att);
-  updateAndRender(task.id, { attachments: list });
-}
-
-function renderAttachments(node, task) {
-  const box = node.querySelector(".card-attachments");
-  const list = Array.isArray(task.attachments) ? task.attachments : [];
-  box.hidden = list.length === 0;
-  list.forEach((att) => {
-    const item = document.createElement("div");
-    item.className = "attach-item " + (att.kind === "image" ? "attach-image" : "attach-file");
-    item.title = att.name;
-    if (att.kind === "image") {
-      const img = document.createElement("img");
-      img.src = att.url;
-      img.alt = att.name;
-      img.loading = "lazy";
-      item.appendChild(img);
-    } else {
-      const chip = document.createElement("span");
-      chip.className = "attach-name";
-      chip.textContent = "📎 " + att.name;
-      item.appendChild(chip);
-    }
-    item.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openAttachment(att);
-    });
-    const del = document.createElement("button");
-    del.className = "attach-del";
-    del.textContent = "×";
-    del.title = "Remove attachment";
-    del.addEventListener("click", (e) => {
-      e.stopPropagation();
-      removeAttachment(task, att);
-    });
-    item.appendChild(del);
-    box.appendChild(item);
-  });
+  task.blocks.push(block);
+  commitBlocks(task);
+  render();
 }
 
 function openAttachment(att) {
@@ -1909,14 +1938,6 @@ function openAttachment(att) {
       });
   } else {
     window.open(att.url, "_blank");
-  }
-}
-
-function removeAttachment(task, att) {
-  const list = (task.attachments || []).filter((a) => a.id !== att.id);
-  updateAndRender(task.id, { attachments: list });
-  if (att.path && supa && user) {
-    supa.storage.from("attachments").remove([att.path]); // best-effort cleanup
   }
 }
 

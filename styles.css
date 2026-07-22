@@ -1036,7 +1036,8 @@ body.tab-dragging-active { touch-action: none; }
   transition: opacity 0.15s, color 0.15s;
 }
 .card-notes-wrap:hover .block-del,
-.card-header-wrap:hover .block-del { opacity: 0.4; }
+.card-header-wrap:hover .block-del,
+.attach-block:hover .block-del { opacity: 0.4; }
 .block-del:hover { opacity: 1; color: #ef4444; }
 
 /* Meta badges (always visible when set) */
@@ -1249,23 +1250,19 @@ li.item-drag-clone {
 }
 .block-add-btn:hover { color: var(--text); background: var(--hover); }
 
-/* Attachments (image thumbnails + file chips) */
-.card-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+/* Attachment blocks (image / file) — draggable and reorderable like any
+   other block. Images sit bare (rounded corners, no box). */
+.attach-block {
+  position: relative;
   margin-top: 8px;
+  cursor: pointer;
 }
-.attach-item { position: relative; cursor: pointer; }
-.attach-image img {
+.attach-block-image img {
   display: block;
-  max-height: 120px;
+  max-height: 160px;
   max-width: 100%;
   border-radius: 8px;
-  border: 1px solid var(--border);
 }
-.attach-image:hover img { border-color: var(--hover-border); }
 .attach-name {
   display: inline-flex;
   align-items: center;
@@ -1281,29 +1278,22 @@ li.item-drag-clone {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.attach-file:hover .attach-name { border-color: var(--hover-border); background: var(--hover); }
-.attach-del {
-  position: absolute;
-  top: -6px;
-  right: -6px;
+.attach-block-file:hover .attach-name { border-color: var(--hover-border); background: var(--hover); }
+/* On an image the × sits on a small disc so it reads over the picture. */
+.attach-block-image .block-del {
+  top: 6px;
+  right: 6px;
   width: 18px;
   height: 18px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--border);
   background: var(--surface);
-  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 50%;
   font-size: 0.8rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s;
 }
-.attach-item:hover .attach-del { opacity: 0.4; }
-.attach-del:hover { opacity: 1; color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
 
 .props-toggle {
   display: block;
@@ -1603,6 +1593,5 @@ body { padding-bottom: 46px; }
   /* …but a card's ×s only appear once that card is open. */
   .card.expanded .delete-btn,
   .card.expanded .checklist-del,
-  .card.expanded .attach-del,
   .card.expanded .block-del { opacity: 0.35; }
 }
