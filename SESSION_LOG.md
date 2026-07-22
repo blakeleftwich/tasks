@@ -1,5 +1,32 @@
 # Session Log
 
+## 2026-07-04 (session wrap) — support Q&A: themes / auth email / egress
+
+### Session goal
+- A long feature/polish session (all code changes logged in the dated entries below + shipped to `main`). This entry captures the **support conversation** (no code) + open items.
+
+### Accomplished (code — see entries below, all shipped)
+- Non-date-based tasks; click-header collapse (sets+cards); set grab handle (neutral); text-only set rename; set-header cursor = task cursor; **set drag axis fix** (Y in stacked); Beach theme; collapsible sets; drag auto-scroll; grip icon; +Tab/+Category relocation; "New Set"/"+ Add something"; optional tabs.
+
+### Support Q&A (no code)
+- **Theme persistence**: per-project but **local-only** (`localStorage boardThemes`, keyed by project id / `__local__`). NOT synced across the user's devices, NOT shared with collaborators (everyone sees their own; default until they pick). Offered to make it a shared `boards.theme` column (probe-gated migration) — user hasn't decided.
+- **Collaborator sign-in failed**: "email rate limit exceeded" = Supabase's built-in/shared email sender hourly cap (free tier, few emails/hr + 60s/address). Not an app bug. Fixes offered: wait ~1hr; **custom SMTP** (Resend etc.); or the workaround below.
+- **Refused to accept user's Google/Supabase login** — correct: never take credentials; guided them to self-serve.
+- **No-email invite workaround (WORKED for user)**: `POST /auth/v1/admin/generate_link` with the **service_role** key returns an `action_link` you hand-deliver (no email sent, dodges the rate limit). Gave a **PowerShell `Invoke-RestMethod`** version (their machine is Windows/PowerShell; the bash `curl -H … \` form errored). Their result came back `type=signup` (new user auto-created) — expected.
+- **Key gotcha surfaced**: `generate_link` only **signs in**; it does NOT join the shared project. Must set `redirect_to` to the project's Share URL (`…/?board=<ID>`, from the 🔗 Share button) so one link signs in AND auto-joins (via `maybeJoinFromLink`). `redirect_to` base must be in Supabase Auth → URL Configuration allow-list.
+- **Egress warning**: org over free egress quota; grace period **until 06 Jul 2026**, then 402s if still over. App is local-first so cloud-sync would fail but device keeps working. Quota is org-wide (could be another project). Offered to trim this app's egress (realtime re-pulls whole board on every change; healing re-uploads on load).
+
+### In progress / open questions
+- **Last unresolved thread**: user "sent both links" but friend "received neither email" — clarified those links are NOT emails (user delivers them directly); likely the user's own messaging channel didn't reach the friend. Awaiting how they sent them. Reminder: login link is single-use, ~1hr expiry.
+- **Deferred, user to decide**: (a) shared/synced theme (`boards.theme` migration); (b) reduce Supabase egress; (c) custom SMTP setup (dashboard + email-provider account — user-side).
+
+### Context for next time
+- App is **non-date-based** now — do NOT reintroduce `selectedDate`/day filtering. `day` field is DB-required but ignored for display.
+- rAF does NOT run in the in-harness preview (drag auto-scroll can't be seen scrolling — shim rAF with setTimeout to verify).
+- Supabase project ref `jyccdxemtaeegyuotyfz`; live at task-manager-phi-nine-59.vercel.app. See [[taskmanager-deploy-access]].
+
+---
+
 ## 2026-07-04 (later) — Non-date-based (fixes "disappearing" tasks)
 
 - **Root cause of the "missing tasks"**: the app was still date-scoped (a hangover from the Daily Task Board) — `group(day, status)` filtered by `t.day === selectedDate`, so a set only showed tasks created on the selected day (defaulting to today). Old tasks were fine in the DB, just filed under earlier dates; after carry-over was removed there was no way to surface them. User asked to switch to non-date-based.
