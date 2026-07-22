@@ -329,7 +329,8 @@ function normalizeBlocks(t) {
     (b) =>
       b &&
       b.id &&
-      ((b.type === "text" && typeof b.text === "string") || (b.type === "checklist" && Array.isArray(b.items)))
+      (((b.type === "text" || b.type === "header") && typeof b.text === "string") ||
+        (b.type === "checklist" && Array.isArray(b.items)))
   );
   if (!blocks.length) {
     blocks = [];
@@ -337,10 +338,10 @@ function normalizeBlocks(t) {
     if (Array.isArray(t.checklist) && t.checklist.length)
       blocks.push({ id: makeId(), type: "checklist", items: t.checklist });
   }
-  return blocks.filter((b) => (b.type === "text" ? b.text.trim() : b.items.length));
+  return blocks.filter((b) => (b.type === "checklist" ? b.items.length : b.text.trim()));
 }
 function blockNotes(blocks) {
-  return blocks.filter((b) => b.type === "text").map((b) => b.text).join("\n\n");
+  return blocks.filter((b) => b.type === "text" || b.type === "header").map((b) => b.text).join("\n\n");
 }
 function blockItems(blocks) {
   return blocks.filter((b) => b.type === "checklist").flatMap((b) => b.items || []);
@@ -1668,6 +1669,7 @@ function textEdit(opts) {
 const BLOCK_TYPES = [
   { key: "text", label: "Text" },
   { key: "checklist", label: "Checklist" },
+  { key: "header", label: "Header" },
   { key: "image", label: "Image" },
   { key: "file", label: "File" },
 ];
@@ -1721,35 +1723,78 @@ function chooseBlock(node, task, key, picker) {
   // Add the block in memory only — it's persisted (and synced) when it gets
   // its first content, and quietly dropped if it never does.
   const block =
-    key === "text" ? { id: makeId(), type: "text", text: "" } : { id: makeId(), type: "checklist", items: [] };
+    key === "checklist" ? { id: makeId(), type: "checklist", items: [] } : { id: makeId(), type: key, text: "" };
   task.blocks.push(block);
   render();
   const sel = `[data-id="${task.id}"] [data-block-id="${block.id}"]`;
-  if (key === "text") document.querySelector(sel)?.startEdit(); // straight into typing
-  else document.querySelector(`${sel} .checklist-input`)?.focus();
+  if (key === "checklist") document.querySelector(`${sel} .checklist-input`)?.focus();
+  else document.querySelector(sel)?.startEdit(); // straight into typing
 }
 
 // Persist a task's blocks plus the legacy notes/checklist mirrors.
 function commitBlocks(task) {
-  task.blocks = task.blocks.filter((b) => (b.type === "text" ? b.text.trim() : true));
+  task.blocks = task.blocks.filter((b) => (b.type === "checklist" ? true : b.text.trim()));
   updateTask(task.id, { blocks: task.blocks, notes: blockNotes(task.blocks), checklist: blockItems(task.blocks) });
 }
 
 function pruneEmptyBlocks(taskId) {
   const task = getTask(taskId);
   if (!task || !Array.isArray(task.blocks)) return;
-  const pruned = task.blocks.filter((b) => (b.type === "text" ? b.text.trim() : b.items.length));
+  const pruned = task.blocks.filter((b) => (b.type === "checklist" ? b.items.length : b.text.trim()));
   if (pruned.length !== task.blocks.length) {
     task.blocks = pruned;
     commitBlocks(task);
   }
 }
 
+function removeBlock(taskId, blockId) {
+  const task = getTask(taskId);
+  if (!task) return;
+  task.blocks = task.blocks.filter((b) => b.id !== blockId);
+  commitBlocks(task);
+  render();
+}
+
+// The small × in a text/header block's corner.
+function blockDelButton(task, block) {
+  const del = document.createElement("button");
+  del.className = "block-del";
+  del.textContent = "×";
+  del.title = "Remove";
+  del.addEventListener("click", (e) => {
+    e.stopPropagation();
+    removeBlock(task.id, block.id);
+  });
+  return del;
+}
+
 function renderBlocks(node, task) {
   const box = node.querySelector(".card-blocks");
   (task.blocks || []).forEach((block) => {
-    box.appendChild(block.type === "checklist" ? renderChecklistBlock(task, block) : renderTextBlock(task, block));
+    box.appendChild(
+      block.type === "checklist"
+        ? renderChecklistBlock(task, block)
+        : block.type === "header"
+          ? renderHeaderBlock(task, block)
+          : renderTextBlock(task, block)
+    );
   });
+}
+
+function renderHeaderBlock(task, block) {
+  const edit = textEdit({
+    value: block.text,
+    placeholder: "Header",
+    wrapClass: "card-header-wrap",
+    displayClass: "card-header-text",
+    inputClass: "card-header-input",
+    onCommit: (v) => setTextBlock(task.id, block.id, v),
+    onDisplayClick: () => !justBlockDragged,
+  });
+  edit.dataset.blockId = block.id;
+  edit.addEventListener("pointerdown", (e) => onBlockPointerDown(e, task.id, block.id, edit));
+  edit.appendChild(blockDelButton(task, block));
+  return edit;
 }
 
 function renderTextBlock(task, block) {
@@ -1765,6 +1810,7 @@ function renderTextBlock(task, block) {
   });
   edit.dataset.blockId = block.id;
   edit.addEventListener("pointerdown", (e) => onBlockPointerDown(e, task.id, block.id, edit));
+  edit.appendChild(blockDelButton(task, block));
   return edit;
 }
 

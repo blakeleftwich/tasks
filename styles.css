@@ -546,7 +546,7 @@ body.stacked-view .tab-bar {
   transition: opacity 0.15s, color 0.15s;
 }
 .tab:hover .tab-delete,
-.tab.active .tab-delete { opacity: 0.55; }
+.tab.active .tab-delete { opacity: 0.4; }
 .tab-delete:hover { opacity: 1; color: #ef4444; background: #fee2e2; }
 
 .tab-name-input {
@@ -759,7 +759,7 @@ body.col-dragging-active { cursor: grabbing; user-select: none; }
   opacity: 0;
   transition: opacity 0.15s, color 0.15s;
 }
-.column-header:hover .col-delete { opacity: 0.6; }
+.column-header:hover .col-delete { opacity: 0.4; }
 .col-delete:hover { opacity: 1; color: #ef4444; }
 
 .column-name-input {
@@ -930,12 +930,14 @@ body.tab-dragging-active { touch-action: none; }
   cursor: pointer;
   padding: 0 4px;
   border-radius: 4px;
-  opacity: 0.5;
+  opacity: 0;
   transition: opacity 0.15s, color 0.15s;
 }
 
-.card:hover .delete-btn { opacity: 1; }
-.delete-btn:hover { color: #ef4444; }
+/* Only the card you're on (selected via click/keyboard, or open) offers its ×. */
+.card.selected .delete-btn,
+.card.expanded .delete-btn { opacity: 0.4; }
+.delete-btn:hover { opacity: 1; color: #ef4444; }
 
 /* Expand-in-place animation (collapsed → open). */
 .card-body {
@@ -956,11 +958,12 @@ body.tab-dragging-active { touch-action: none; }
 /* Text blocks live in a soft field box (display and edit mode alike). */
 .card-notes-wrap {
   display: block;
+  position: relative; /* anchors the corner × */
   margin-top: 8px;
   background: var(--field);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 9px;
+  padding: 7px 24px 7px 9px;
 }
 .card-notes-wrap:focus-within {
   background: var(--surface);
@@ -988,6 +991,53 @@ body.tab-dragging-active { touch-action: none; }
   overflow: hidden;
 }
 .card-notes-input:focus { outline: none; }
+
+/* Header blocks: a short bold line, no box — breaks the card into sections. */
+.card-header-wrap {
+  display: block;
+  position: relative;
+  margin-top: 10px;
+  padding-right: 22px;
+}
+.card-header-text {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: text;
+  word-break: break-word;
+}
+.card-header-input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--todo);
+  padding: 0;
+}
+.card-header-input:focus { outline: none; }
+
+/* The corner × on text/header blocks. */
+.block-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.card-notes-wrap:hover .block-del,
+.card-header-wrap:hover .block-del { opacity: 0.4; }
+.block-del:hover { opacity: 1; color: #ef4444; }
 
 /* Meta badges (always visible when set) */
 .card-meta {
@@ -1162,10 +1212,11 @@ li.item-drag-clone {
   line-height: 1;
   padding: 2px 4px 0;
   border-radius: 4px;
-  opacity: 0.5;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
 }
-.checklist-item:hover .checklist-del { opacity: 1; }
-.checklist-del:hover { color: #ef4444; }
+.checklist-item:hover .checklist-del { opacity: 0.4; }
+.checklist-del:hover { opacity: 1; color: #ef4444; }
 .checklist-input {
   width: 100%;
   font: inherit;
@@ -1179,19 +1230,22 @@ li.item-drag-clone {
 .checklist-input:focus { outline: none; border-color: var(--todo); }
 
 /* "More" toggle + collapsible menu fields (priority / due / colour) */
-/* "+ Add something" inside a card's body + its little block-type menu */
-.block-add { margin-top: 6px; }
+/* "+ Add something" inside a card's body — same dashed placeholder look as
+   the column's add-a-task field — plus its little block-type menu. */
+.block-add { margin-top: 8px; }
 .block-add-btn {
   display: block;
-  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.82rem;
+  border: 1.5px dashed var(--hover-border);
   background: transparent;
   color: var(--muted);
-  font: inherit;
-  font-size: 0.78rem;
+  border-radius: 10px;
+  padding: 8px 10px;
   cursor: pointer;
-  padding: 5px 8px;
-  margin-left: -8px; /* line the label up with the blocks above */
-  border-radius: 8px;
+  transition: background 0.15s, border-color 0.15s;
 }
 .block-add-btn:hover { color: var(--text); background: var(--hover); }
 
@@ -1248,8 +1302,8 @@ li.item-drag-clone {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.attach-item:hover .attach-del { opacity: 1; }
-.attach-del:hover { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+.attach-item:hover .attach-del { opacity: 0.4; }
+.attach-del:hover { opacity: 1; color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
 
 .props-toggle {
   display: block;
@@ -1542,10 +1596,13 @@ body { padding-bottom: 46px; }
 /* Touch devices have no hover, so controls that are revealed on hover would be
    invisible/untappable. Keep them visible when narrow OR on a touch screen. */
 @media (max-width: 760px), (hover: none) {
+  /* No hover on touch: set/tab/menu ×s stay faintly visible… */
   .board-menu-action,
   .col-delete,
-  .tab-delete,
-  .card .delete-btn,
-  .checklist-del,
-  .attach-del { opacity: 0.55; }
+  .tab-delete { opacity: 0.35; }
+  /* …but a card's ×s only appear once that card is open. */
+  .card.expanded .delete-btn,
+  .card.expanded .checklist-del,
+  .card.expanded .attach-del,
+  .card.expanded .block-del { opacity: 0.35; }
 }
