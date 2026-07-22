@@ -2637,7 +2637,7 @@ document.addEventListener("click", (e) => {
  * ===================================================================== */
 function matchesSearch(task) {
   if (!searchQuery) return true;
-  return (task.title + " " + (task.notes || "")).toLowerCase().includes(searchQuery);
+  return (task.title + " " + (task.notes || "") + " " + (task.assignee || "")).toLowerCase().includes(searchQuery);
 }
 
 // Whether a task shows in the board right now: matches search AND (not completed,
