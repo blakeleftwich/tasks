@@ -1173,6 +1173,16 @@ li.item-drag-clone {
 }
 .checklist-item:hover .checklist-handle { opacity: 0.9; }
 .checklist-handle:active { cursor: grabbing; }
+/* Bulleted list items: a dot where the checkbox would be. */
+.bullet-dot {
+  flex: none;
+  width: 15px;
+  text-align: center;
+  color: var(--muted);
+  line-height: 1.4;
+  user-select: none;
+}
+
 .checklist-item input[type="checkbox"] {
   flex: none;
   cursor: pointer;

@@ -330,7 +330,7 @@ function normalizeBlocks(t) {
       b &&
       b.id &&
       (((b.type === "text" || b.type === "header") && typeof b.text === "string") ||
-        (b.type === "checklist" && Array.isArray(b.items)) ||
+        ((b.type === "checklist" || b.type === "list") && Array.isArray(b.items)) ||
         ((b.type === "image" || b.type === "file") && typeof b.url === "string"))
   );
   if (!blocks.length) {
@@ -359,7 +359,7 @@ function normalizeBlocks(t) {
 }
 
 function blockHasContent(b) {
-  if (b.type === "checklist") return b.items.length > 0;
+  if (b.type === "checklist" || b.type === "list") return b.items.length > 0;
   if (b.type === "text" || b.type === "header") return !!b.text.trim();
   return true; // image/file blocks always count
 }
@@ -1696,6 +1696,7 @@ function textEdit(opts) {
 const BLOCK_TYPES = [
   { key: "text", label: "Text" },
   { key: "checklist", label: "Checklist" },
+  { key: "list", label: "List" },
   { key: "header", label: "Header" },
   { key: "image", label: "Image" },
   { key: "file", label: "File" },
@@ -1750,18 +1751,20 @@ function chooseBlock(node, task, key, picker) {
   // Add the block in memory only — it's persisted (and synced) when it gets
   // its first content, and quietly dropped if it never does.
   const block =
-    key === "checklist" ? { id: makeId(), type: "checklist", items: [] } : { id: makeId(), type: key, text: "" };
+    key === "checklist" || key === "list"
+      ? { id: makeId(), type: key, items: [] }
+      : { id: makeId(), type: key, text: "" };
   task.blocks.push(block);
   render();
   const sel = `[data-id="${task.id}"] [data-block-id="${block.id}"]`;
-  if (key === "checklist") document.querySelector(`${sel} .checklist-input`)?.focus();
+  if (block.items) document.querySelector(`${sel} .checklist-input`)?.focus();
   else document.querySelector(sel)?.startEdit(); // straight into typing
 }
 
 // Persist a task's blocks plus the legacy notes/checklist/attachments mirrors.
 function commitBlocks(task) {
-  // Keep still-empty checklists during the session; drop emptied text/headers.
-  task.blocks = task.blocks.filter((b) => b.type === "checklist" || blockHasContent(b));
+  // Keep still-empty checklists/lists during the session; drop emptied text/headers.
+  task.blocks = task.blocks.filter((b) => b.type === "checklist" || b.type === "list" || blockHasContent(b));
   updateTask(task.id, {
     blocks: task.blocks,
     notes: blockNotes(task.blocks),
@@ -1800,11 +1803,13 @@ async function removeBlock(taskId, blockId) {
 
 function blockDeletePrompt(block) {
   const snip = (s) => (s.length > 60 ? s.slice(0, 57) + "…" : s);
-  if (block.type === "checklist") {
+  if (block.type === "checklist" || block.type === "list") {
     const n = block.items.length;
+    const noun = block.type === "list" ? "list" : "checklist";
+    const unit = block.type === "list" ? "item" : "step";
     return {
-      title: "Delete checklist?",
-      message: `This checklist and its ${n} step${n === 1 ? "" : "s"} will be permanently deleted.`,
+      title: `Delete ${noun}?`,
+      message: `This ${noun} and its ${n} ${unit}${n === 1 ? "" : "s"} will be permanently deleted.`,
     };
   }
   if (block.type === "image") return { title: "Delete image?", message: `“${block.name}” will be permanently deleted.` };
@@ -1832,7 +1837,7 @@ function renderBlocks(node, task) {
   const box = node.querySelector(".card-blocks");
   (task.blocks || []).forEach((block) => {
     box.appendChild(
-      block.type === "checklist"
+      block.type === "checklist" || block.type === "list"
         ? renderChecklistBlock(task, block)
         : block.type === "header"
           ? renderHeaderBlock(task, block)
@@ -1994,8 +1999,9 @@ async function imageToDataUrl(file) {
 
 /* ---------- Checklist blocks (sub-steps; a card can have several) ---------- */
 function renderChecklistBlock(task, block) {
+  const isBullets = block.type === "list"; // bulleted list: same bones, no checkboxes
   const wrap = document.createElement("div");
-  wrap.className = "card-checklist";
+  wrap.className = "card-checklist" + (isBullets ? " bullet-list" : "");
   wrap.dataset.blockId = block.id;
   wrap.addEventListener("pointerdown", (e) => onBlockPointerDown(e, task.id, block.id, wrap));
 
@@ -2003,7 +2009,7 @@ function renderChecklistBlock(task, block) {
   list.className = "checklist-items";
   (block.items || []).forEach((item) => {
     const li = document.createElement("li");
-    li.className = "checklist-item" + (item.done ? " done" : "");
+    li.className = "checklist-item" + (!isBullets && item.done ? " done" : "");
     li.dataset.itemId = item.id;
     li.addEventListener("pointerdown", (e) => onItemPointerDown(e, task.id, block.id, item.id, li));
 
@@ -2012,10 +2018,17 @@ function renderChecklistBlock(task, block) {
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
 
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = item.done;
-    cb.addEventListener("change", () => toggleChecklistItem(task.id, block.id, item.id));
+    let cb;
+    if (isBullets) {
+      cb = document.createElement("span");
+      cb.className = "bullet-dot";
+      cb.textContent = "•";
+    } else {
+      cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!item.done;
+      cb.addEventListener("change", () => toggleChecklistItem(task.id, block.id, item.id));
+    }
 
     const text = textEdit({
       value: item.text,
@@ -2041,8 +2054,8 @@ function renderChecklistBlock(task, block) {
   const addInput = document.createElement("input");
   addInput.className = "checklist-input";
   addInput.type = "text";
-  addInput.placeholder = "+ Add a step…";
-  addInput.setAttribute("aria-label", "Add a step");
+  addInput.placeholder = isBullets ? "+ Add an item…" : "+ Add a step…";
+  addInput.setAttribute("aria-label", isBullets ? "Add an item" : "Add a step");
   addInput.addEventListener("keydown", (e) => {
     const value = addInput.value.trim();
     if (e.key === "Enter" && value) addChecklistItem(task.id, block.id, value);
@@ -2055,7 +2068,8 @@ function renderChecklistBlock(task, block) {
 
 function checklistBlockOf(taskId, blockId) {
   const task = getTask(taskId);
-  const block = task && (task.blocks || []).find((b) => b.id === blockId && b.type === "checklist");
+  const block =
+    task && (task.blocks || []).find((b) => b.id === blockId && (b.type === "checklist" || b.type === "list"));
   return block ? { task, block } : null;
 }
 
@@ -2090,12 +2104,13 @@ async function deleteChecklistItem(taskId, blockId, itemId) {
   const found = checklistBlockOf(taskId, blockId);
   const item = found && found.block.items.find((i) => i.id === itemId);
   if (!item) return;
+  const word = found.block.type === "list" ? "item" : "step";
   const text = (item.text || "").trim();
   const ok = await confirmModal({
-    title: "Delete step?",
+    title: `Delete ${word}?`,
     message: text
       ? `“${text.length > 60 ? text.slice(0, 57) + "…" : text}” will be permanently deleted.`
-      : "This step will be permanently deleted.",
+      : `This ${word} will be permanently deleted.`,
   });
   if (!ok) return;
   found.block.items = found.block.items.filter((i) => i.id !== itemId);
