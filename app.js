@@ -196,6 +196,7 @@ let columnsSyncable = false; // whether the boards.columns column exists yet
 let tagSyncable = false; // whether the tasks.tag column exists yet
 let tabsSyncable = false; // whether the boards.tabs column exists yet
 let taskTabSyncable = false; // whether the tasks.tab column exists yet
+let assigneeSyncable = false; // whether the tasks.assignee column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -304,6 +305,7 @@ function normalizeTask(t) {
     priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : null,
     label: t.label || null,
     tag: t.tag || null,
+    assignee: (typeof t.assignee === "string" && t.assignee.trim()) || null,
     checklist: Array.isArray(t.checklist) ? t.checklist : [],
     completed: !!t.completed,
     updated_at: t.updated_at || nowIso(),
@@ -670,6 +672,78 @@ function buildTagMenu(menu, task) {
   });
   newRow.append(newDot, add);
   menu.appendChild(newRow);
+}
+
+/* ---------- Assignee (a free-text person name; picker lists names already
+ * used on this project so assigning the same person twice is one click) ---- */
+function knownAssignees() {
+  const seen = new Map(); // lowercased → first-seen casing
+  tasks.forEach((t) => {
+    if (t.assignee && !seen.has(t.assignee.toLowerCase())) seen.set(t.assignee.toLowerCase(), t.assignee);
+  });
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+function renderAssigneeSelector(node, task) {
+  const trigger = node.querySelector(".assignee-trigger");
+  const menu = node.querySelector(".assignee-menu");
+  trigger.textContent = (task.assignee || "Nobody") + "  ▾";
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willOpen = menu.hidden;
+    document.querySelectorAll(".tag-menu").forEach((m) => (m.hidden = true));
+    if (!willOpen) {
+      menu.hidden = true;
+      return;
+    }
+    buildAssigneeMenu(menu, task);
+    const r = trigger.getBoundingClientRect();
+    menu.style.left = r.left + "px";
+    menu.style.top = r.bottom + 4 + "px";
+    menu.style.minWidth = r.width + "px";
+    menu.hidden = false;
+  });
+}
+
+function buildAssigneeMenu(menu, task) {
+  menu.innerHTML = "";
+
+  const none = document.createElement("button");
+  none.className = "tag-menu-pick none" + (!task.assignee ? " current" : "");
+  none.textContent = "Nobody";
+  none.addEventListener("click", () => {
+    menu.hidden = true;
+    updateAndRender(task.id, { assignee: null });
+  });
+  menu.appendChild(none);
+
+  knownAssignees().forEach((name) => {
+    const pick = document.createElement("button");
+    pick.className = "tag-menu-pick" + (task.assignee === name ? " current" : "");
+    pick.textContent = "👤 " + name;
+    pick.addEventListener("click", () => {
+      menu.hidden = true;
+      updateAndRender(task.id, { assignee: name });
+    });
+    menu.appendChild(pick);
+  });
+
+  const divider = document.createElement("div");
+  divider.className = "tag-menu-divider";
+  menu.appendChild(divider);
+
+  const add = document.createElement("input");
+  add.className = "tag-menu-new";
+  add.placeholder = "+ New person…";
+  add.addEventListener("click", (e) => e.stopPropagation());
+  add.addEventListener("keydown", (e) => {
+    const v = add.value.trim();
+    if (e.key === "Enter" && v) {
+      menu.hidden = true;
+      updateAndRender(task.id, { assignee: v });
+    }
+  });
+  menu.appendChild(add);
 }
 
 function createTag(task, label, color) {
@@ -1329,6 +1403,11 @@ function renderCard(task) {
     pill.style.background = color + "1a";
     pill.style.color = darkenColor(color);
   }
+  const who = node.querySelector(".assignee-chip");
+  if (task.assignee) {
+    who.hidden = false;
+    who.textContent = "👤 " + task.assignee;
+  }
   const chip = node.querySelector(".progress-chip");
   if (checklist.length) {
     const done = checklist.filter((i) => i.done).length;
@@ -1337,7 +1416,7 @@ function renderCard(task) {
     if (done === checklist.length) chip.classList.add("complete");
     chip.innerHTML = `<span class="progress-track"><span class="progress-fill" style="width:${pct}%"></span></span><span class="progress-count">${done}/${checklist.length}</span>`;
   }
-  node.querySelector(".card-meta").hidden = !task.due && !selectedTag && checklist.length === 0;
+  node.querySelector(".card-meta").hidden = !task.due && !selectedTag && !task.assignee && checklist.length === 0;
 
   // Description — click the text (or placeholder) to edit. Enter finishes,
   // Shift+Enter inserts a newline.
@@ -1356,8 +1435,9 @@ function renderCard(task) {
   // Checklist.
   renderChecklist(node, task, checklist);
 
-  // Menu fields: tag, due date, colour (at the bottom).
+  // Menu fields: tag, assignee, due date, colour (at the bottom).
   renderTagSelector(node, task);
+  renderAssigneeSelector(node, task);
   const dueInput = node.querySelector(".due-input");
   dueInput.value = task.due || "";
   dueInput.addEventListener("change", () => updateAndRender(task.id, { due: dueInput.value || null }));
@@ -1972,6 +2052,7 @@ function rowFromTask(t) {
   if (completedSyncable) row.completed = !!t.completed;
   if (tagSyncable) row.tag = t.tag || null;
   if (taskTabSyncable) row.tab = t.tab || null; // note: distinct from `tag` above
+  if (assigneeSyncable) row.assignee = t.assignee || null;
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -2024,6 +2105,8 @@ async function setUser(nextUser) {
     tabsSyncable = !probeTabs.error; // false until supabase-tabs.sql is run
     const probeTaskTab = await supa.from("tasks").select("tab").limit(1);
     taskTabSyncable = !probeTaskTab.error;
+    const probeAssignee = await supa.from("tasks").select("assignee").limit(1);
+    assigneeSyncable = !probeAssignee.error; // false until supabase-assignee.sql is run
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
     loadTabsForBoard(); // this board's tabs (+ their columns)
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in

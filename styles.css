@@ -1000,6 +1000,18 @@ body.tab-dragging-active { touch-action: none; }
   gap: 4px;
 }
 
+.assignee-chip {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .due-badge.overdue {
   color: #b91c1c;
   background: #fef2f2;

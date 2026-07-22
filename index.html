@@ -72,6 +72,7 @@
       <div class="card-meta">
         <span class="due-badge" hidden></span>
         <span class="tag-pill" hidden></span>
+        <span class="assignee-chip" hidden></span>
         <span class="progress-chip" hidden></span>
       </div>
 
@@ -91,6 +92,11 @@
               <div class="tag-select">
                 <button class="tag-trigger" type="button">None ▾</button>
                 <div class="tag-menu" hidden></div>
+              </div>
+              <label class="card-menu-label">Assign to</label>
+              <div class="tag-select assignee-select">
+                <button class="tag-trigger assignee-trigger" type="button">Nobody ▾</button>
+                <div class="tag-menu assignee-menu" hidden></div>
               </div>
               <label class="card-menu-label">Due date</label>
               <input class="due-input" type="date" aria-label="Due date" />
