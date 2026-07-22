@@ -166,7 +166,6 @@ const TASK_FIELDS = ["id", "day", "status", "position", "title", "notes", "due",
 let tasks = []; // flat array of task objects
 let expandedCardId = null; // the card expanded in place (view state, not persisted)
 let propsOpenForId = null; // card whose priority/due/colour options are revealed
-const emptyBlocksOpen = new Map(); // taskId -> Set of body blocks chosen via "+ Add something" but still empty
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
 let searchQuery = ""; // lowercased search filter
 let shownCompletedCols = new Set(); // task-set (column) keys currently revealing completed tasks
@@ -199,6 +198,7 @@ let tabsSyncable = false; // whether the boards.tabs column exists yet
 let taskTabSyncable = false; // whether the tasks.tab column exists yet
 let assigneeSyncable = false; // whether the tasks.assignee column exists yet
 let attachmentsSyncable = false; // whether the tasks.attachments column exists yet
+let blocksSyncable = false; // whether the tasks.blocks column exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -231,7 +231,7 @@ function loadLocal() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.tasks)) return parsed.tasks;
+      if (Array.isArray(parsed.tasks)) return parsed.tasks.map(normalizeTask); // builds blocks for pre-block tasks
     }
   } catch (e) {
     console.warn("Could not read saved data; starting fresh.", e);
@@ -295,6 +295,7 @@ function nowIso() {
 }
 
 function normalizeTask(t) {
+  const blocks = normalizeBlocks(t);
   return {
     id: t.id || makeId(),
     day: t.day || todayKey(),
@@ -302,17 +303,47 @@ function normalizeTask(t) {
     tab: t.tab || null,
     position: typeof t.position === "number" ? t.position : 0,
     title: t.title || "",
-    notes: t.notes || "",
+    // notes/checklist are legacy mirrors of the blocks (kept in sync for
+    // search and for clients/DBs that predate the blocks column).
+    notes: blockNotes(blocks),
     due: t.due || null,
     priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : null,
     label: t.label || null,
     tag: t.tag || null,
     assignee: (typeof t.assignee === "string" && t.assignee.trim()) || null,
-    checklist: Array.isArray(t.checklist) ? t.checklist : [],
+    checklist: blockItems(blocks),
+    blocks,
     attachments: Array.isArray(t.attachments) ? t.attachments : [],
     completed: !!t.completed,
     updated_at: t.updated_at || nowIso(),
   };
+}
+
+/* A card body is an ordered list of blocks: {id, type:"text", text} or
+ * {id, type:"checklist", items:[{id,text,done}]}. Tasks that predate blocks
+ * (or rows synced without the blocks column) rebuild them from the legacy
+ * notes/checklist fields. Never-filled empty blocks are dropped on load. */
+function normalizeBlocks(t) {
+  let blocks = Array.isArray(t.blocks) ? t.blocks : [];
+  blocks = blocks.filter(
+    (b) =>
+      b &&
+      b.id &&
+      ((b.type === "text" && typeof b.text === "string") || (b.type === "checklist" && Array.isArray(b.items)))
+  );
+  if (!blocks.length) {
+    blocks = [];
+    if (t.notes && String(t.notes).trim()) blocks.push({ id: makeId(), type: "text", text: String(t.notes) });
+    if (Array.isArray(t.checklist) && t.checklist.length)
+      blocks.push({ id: makeId(), type: "checklist", items: t.checklist });
+  }
+  return blocks.filter((b) => (b.type === "text" ? b.text.trim() : b.items.length));
+}
+function blockNotes(blocks) {
+  return blocks.filter((b) => b.type === "text").map((b) => b.text).join("\n\n");
+}
+function blockItems(blocks) {
+  return blocks.filter((b) => b.type === "checklist").flatMap((b) => b.items || []);
 }
 
 function getTask(id) {
@@ -1387,8 +1418,9 @@ function renderCard(task) {
   });
   titleEl.replaceWith(titleEdit);
 
-  // Meta: due / priority / checklist progress.
-  const checklist = Array.isArray(task.checklist) ? task.checklist : [];
+  // Meta: due / priority / checklist progress (progress counts all checklist
+  // blocks together).
+  const checklist = blockItems(task.blocks || []);
   const badge = node.querySelector(".due-badge");
   if (task.due) {
     badge.hidden = false;
@@ -1421,29 +1453,9 @@ function renderCard(task) {
   }
   node.querySelector(".card-meta").hidden = !task.due && !selectedTag && !task.assignee && checklist.length === 0;
 
-  // Description — click the text (or placeholder) to edit. Enter finishes,
-  // Shift+Enter inserts a newline.
-  const notesEl = node.querySelector(".card-notes");
-  const notesEdit = textEdit({
-    value: task.notes,
-    placeholder: "Add a description…",
-    multiline: true,
-    wrapClass: "card-notes-wrap",
-    displayClass: "card-notes-text",
-    inputClass: "card-notes-input",
-    onCommit: (v) => updateTask(task.id, { notes: v }),
-  });
-  notesEl.replaceWith(notesEdit);
-
-  // Checklist.
-  renderChecklist(node, task, checklist);
-
-  // Body blocks: only blocks with content show; everything else hides behind
-  // the single "+ Add something" button (blocks just chosen there stay visible
-  // while still empty so the user can fill them in).
-  const openBlocks = emptyBlocksOpen.get(task.id) || new Set();
-  notesEdit.hidden = !(task.notes && task.notes.trim()) && !openBlocks.has("text");
-  node.querySelector(".card-checklist").hidden = checklist.length === 0 && !openBlocks.has("checklist");
+  // Body: the card's blocks (text boxes + checklists, as many of each as the
+  // user added, in order), attachments, then the "+ Add something" chooser.
+  renderBlocks(node, task);
   renderAttachments(node, task);
   renderBlockAdd(node, task);
 
@@ -1512,15 +1524,14 @@ function expandCard(id) {
   expandedCardId = id;
   selectedCardId = id;
   propsOpenForId = null; // options start collapsed each time a card opens
-  emptyBlocksOpen.clear(); // unfilled blocks reset too
   setCardExpanded(node, true);
 }
 
 function collapseCard() {
   if (!expandedCardId) return;
+  pruneEmptyBlocks(expandedCardId); // never-filled boxes vanish on close
   setCardExpanded(board.querySelector(`.card[data-id="${expandedCardId}"]`), false);
   expandedCardId = null;
-  emptyBlocksOpen.clear();
 }
 
 /* ---------- FLIP: glide cards to their new spot on the next render ---------- */
@@ -1652,8 +1663,8 @@ function textEdit(opts) {
 
 /* ---------- "+ Add something" body blocks ----------
  * A card's body starts empty; this menu is the one place to add to it.
- * Extend BLOCK_TYPES to offer new kinds of content later. Text and
- * checklist are singletons, so they leave the menu once present. */
+ * A card can hold any number of text boxes and checklists, in order.
+ * Extend BLOCK_TYPES to offer new kinds of content later. */
 const BLOCK_TYPES = [
   { key: "text", icon: "📝", label: "Text" },
   { key: "checklist", icon: "☑️", label: "Checklist" },
@@ -1687,13 +1698,7 @@ function renderBlockAdd(node, task) {
 
 function buildBlockMenu(menu, node, task, picker) {
   menu.innerHTML = "";
-  const open = emptyBlocksOpen.get(task.id) || new Set();
-  const present = {
-    text: !!(task.notes && task.notes.trim()) || open.has("text"),
-    checklist: (task.checklist || []).length > 0 || open.has("checklist"),
-  };
   BLOCK_TYPES.forEach((b) => {
-    if (present[b.key]) return;
     const pick = document.createElement("button");
     pick.className = "tag-menu-pick";
     pick.textContent = b.icon + " " + b.label;
@@ -1713,18 +1718,63 @@ function chooseBlock(node, task, key, picker) {
     picker.click();
     return;
   }
-  const open = emptyBlocksOpen.get(task.id) || new Set();
-  open.add(key);
-  emptyBlocksOpen.set(task.id, open);
-  if (key === "text") {
-    const wrap = node.querySelector(".card-notes-wrap");
-    wrap.hidden = false;
-    wrap.startEdit(); // straight into typing
-  } else if (key === "checklist") {
-    const box = node.querySelector(".card-checklist");
-    box.hidden = false;
-    box.querySelector(".checklist-input").focus();
+  // Add the block in memory only — it's persisted (and synced) when it gets
+  // its first content, and quietly dropped if it never does.
+  const block =
+    key === "text" ? { id: makeId(), type: "text", text: "" } : { id: makeId(), type: "checklist", items: [] };
+  task.blocks.push(block);
+  render();
+  const sel = `[data-id="${task.id}"] [data-block-id="${block.id}"]`;
+  if (key === "text") document.querySelector(sel)?.startEdit(); // straight into typing
+  else document.querySelector(`${sel} .checklist-input`)?.focus();
+}
+
+// Persist a task's blocks plus the legacy notes/checklist mirrors.
+function commitBlocks(task) {
+  task.blocks = task.blocks.filter((b) => (b.type === "text" ? b.text.trim() : true));
+  updateTask(task.id, { blocks: task.blocks, notes: blockNotes(task.blocks), checklist: blockItems(task.blocks) });
+}
+
+function pruneEmptyBlocks(taskId) {
+  const task = getTask(taskId);
+  if (!task || !Array.isArray(task.blocks)) return;
+  const pruned = task.blocks.filter((b) => (b.type === "text" ? b.text.trim() : b.items.length));
+  if (pruned.length !== task.blocks.length) {
+    task.blocks = pruned;
+    commitBlocks(task);
   }
+}
+
+function renderBlocks(node, task) {
+  const box = node.querySelector(".card-blocks");
+  (task.blocks || []).forEach((block) => {
+    box.appendChild(block.type === "checklist" ? renderChecklistBlock(task, block) : renderTextBlock(task, block));
+  });
+}
+
+function renderTextBlock(task, block) {
+  const edit = textEdit({
+    value: block.text,
+    placeholder: "Add text…",
+    multiline: true,
+    wrapClass: "card-notes-wrap",
+    displayClass: "card-notes-text",
+    inputClass: "card-notes-input",
+    onCommit: (v) => setTextBlock(task.id, block.id, v),
+  });
+  edit.dataset.blockId = block.id;
+  return edit;
+}
+
+function setTextBlock(taskId, blockId, text) {
+  const task = getTask(taskId);
+  if (!task) return;
+  const block = task.blocks.find((b) => b.id === blockId);
+  if (!block) return;
+  const emptied = !text.trim();
+  block.text = text;
+  commitBlocks(task); // an emptied box is filtered out here
+  if (emptied) render();
 }
 
 /* ---------- Attachments (images + files) ----------
@@ -1850,10 +1900,15 @@ async function imageToDataUrl(file) {
   return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-/* ---------- Checklist (sub-steps) ---------- */
-function renderChecklist(node, task, checklist) {
-  const list = node.querySelector(".checklist-items");
-  checklist.forEach((item) => {
+/* ---------- Checklist blocks (sub-steps; a card can have several) ---------- */
+function renderChecklistBlock(task, block) {
+  const wrap = document.createElement("div");
+  wrap.className = "card-checklist";
+  wrap.dataset.blockId = block.id;
+
+  const list = document.createElement("ul");
+  list.className = "checklist-items";
+  (block.items || []).forEach((item) => {
     const li = document.createElement("li");
     li.className = "checklist-item" + (item.done ? " done" : "");
     li.dataset.itemId = item.id;
@@ -1862,12 +1917,12 @@ function renderChecklist(node, task, checklist) {
     handle.className = "checklist-handle";
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
-    handle.addEventListener("pointerdown", (e) => onChecklistHandleDown(e, task.id, li));
+    handle.addEventListener("pointerdown", (e) => onChecklistHandleDown(e, task.id, block.id, li));
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = item.done;
-    cb.addEventListener("change", () => toggleChecklistItem(task.id, item.id));
+    cb.addEventListener("change", () => toggleChecklistItem(task.id, block.id, item.id));
 
     const text = textEdit({
       value: item.text,
@@ -1876,65 +1931,71 @@ function renderChecklist(node, task, checklist) {
       wrapClass: "checklist-wrap",
       displayClass: "checklist-text-display",
       inputClass: "checklist-text-input",
-      onCommit: (v) => updateChecklistText(task.id, item.id, v),
+      onCommit: (v) => updateChecklistText(task.id, block.id, item.id, v),
     });
 
     const del = document.createElement("button");
     del.className = "checklist-del";
     del.textContent = "×";
     del.title = "Remove step";
-    del.addEventListener("click", () => deleteChecklistItem(task.id, item.id));
+    del.addEventListener("click", () => deleteChecklistItem(task.id, block.id, item.id));
 
     li.append(handle, cb, text, del);
     list.appendChild(li);
   });
 
-  const addInput = node.querySelector(".checklist-input");
+  const addInput = document.createElement("input");
+  addInput.className = "checklist-input";
+  addInput.type = "text";
+  addInput.placeholder = "+ Add a step…";
+  addInput.setAttribute("aria-label", "Add a step");
   addInput.addEventListener("keydown", (e) => {
     const value = addInput.value.trim();
-    if (e.key === "Enter" && value) addChecklistItem(task.id, value);
+    if (e.key === "Enter" && value) addChecklistItem(task.id, block.id, value);
   });
+
+  wrap.append(list, addInput);
+  return wrap;
 }
 
-function checklistOf(task) {
-  if (!Array.isArray(task.checklist)) task.checklist = [];
-  return task.checklist;
-}
-
-function addChecklistItem(taskId, text) {
+function checklistBlockOf(taskId, blockId) {
   const task = getTask(taskId);
-  if (!task) return;
-  checklistOf(task).push({ id: makeId(), text, done: false });
-  updateTask(taskId, { checklist: task.checklist });
+  const block = task && (task.blocks || []).find((b) => b.id === blockId && b.type === "checklist");
+  return block ? { task, block } : null;
+}
+
+function addChecklistItem(taskId, blockId, text) {
+  const found = checklistBlockOf(taskId, blockId);
+  if (!found) return;
+  found.block.items.push({ id: makeId(), text, done: false });
+  commitBlocks(found.task);
   render();
-  const el = document.querySelector(`[data-id="${taskId}"] .checklist-input`);
+  const el = document.querySelector(`[data-id="${taskId}"] [data-block-id="${blockId}"] .checklist-input`);
   if (el) el.focus();
 }
 
-function toggleChecklistItem(taskId, itemId) {
-  const task = getTask(taskId);
-  if (!task) return;
-  const item = checklistOf(task).find((i) => i.id === itemId);
+function toggleChecklistItem(taskId, blockId, itemId) {
+  const found = checklistBlockOf(taskId, blockId);
+  const item = found && found.block.items.find((i) => i.id === itemId);
   if (!item) return;
   item.done = !item.done;
-  updateTask(taskId, { checklist: task.checklist });
+  commitBlocks(found.task);
   render();
 }
 
-function updateChecklistText(taskId, itemId, text) {
-  const task = getTask(taskId);
-  if (!task) return;
-  const item = checklistOf(task).find((i) => i.id === itemId);
+function updateChecklistText(taskId, blockId, itemId, text) {
+  const found = checklistBlockOf(taskId, blockId);
+  const item = found && found.block.items.find((i) => i.id === itemId);
   if (!item) return;
   item.text = text;
-  updateTask(taskId, { checklist: task.checklist });
+  commitBlocks(found.task);
 }
 
-function deleteChecklistItem(taskId, itemId) {
-  const task = getTask(taskId);
-  if (!task) return;
-  task.checklist = checklistOf(task).filter((i) => i.id !== itemId);
-  updateTask(taskId, { checklist: task.checklist });
+function deleteChecklistItem(taskId, blockId, itemId) {
+  const found = checklistBlockOf(taskId, blockId);
+  if (!found) return;
+  found.block.items = found.block.items.filter((i) => i.id !== itemId);
+  commitBlocks(found.task);
   render();
 }
 
@@ -1947,11 +2008,11 @@ function removeChecklistListeners() {
   window.removeEventListener("pointercancel", onChecklistUp);
 }
 
-function onChecklistHandleDown(e, taskId, li) {
+function onChecklistHandleDown(e, taskId, blockId, li) {
   if (e.pointerType === "mouse" && e.button !== 0) return;
   e.stopPropagation(); // keep the card itself from starting a drag
   e.preventDefault(); // the handle is for dragging — don't scroll/select (touch + mouse)
-  listDrag = { taskId, li, ul: li.parentElement };
+  listDrag = { taskId, blockId, li, ul: li.parentElement };
   li.classList.add("reordering");
   window.addEventListener("pointermove", onChecklistMove);
   window.addEventListener("pointerup", onChecklistUp);
@@ -1970,13 +2031,13 @@ function onChecklistMove(e) {
 function onChecklistUp() {
   removeChecklistListeners();
   if (!listDrag) return;
-  const { taskId, ul, li } = listDrag;
+  const { taskId, blockId, ul, li } = listDrag;
   li.classList.remove("reordering");
   const order = [...ul.querySelectorAll(".checklist-item")].map((el) => el.dataset.itemId);
-  const task = getTask(taskId);
-  if (task && Array.isArray(task.checklist)) {
-    task.checklist.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-    updateTask(taskId, { checklist: task.checklist });
+  const found = checklistBlockOf(taskId, blockId);
+  if (found) {
+    found.block.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    commitBlocks(found.task);
   }
   listDrag = null;
   render();
@@ -2268,6 +2329,7 @@ function rowFromTask(t) {
   if (taskTabSyncable) row.tab = t.tab || null; // note: distinct from `tag` above
   if (assigneeSyncable) row.assignee = t.assignee || null;
   if (attachmentsSyncable) row.attachments = t.attachments || [];
+  if (blocksSyncable) row.blocks = t.blocks || [];
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -2324,6 +2386,8 @@ async function setUser(nextUser) {
     assigneeSyncable = !probeAssignee.error; // false until supabase-assignee.sql is run
     const probeAttach = await supa.from("tasks").select("attachments").limit(1);
     attachmentsSyncable = !probeAttach.error; // false until supabase-attachments.sql is run
+    const probeBlocks = await supa.from("tasks").select("blocks").limit(1);
+    blocksSyncable = !probeBlocks.error; // false until supabase-blocks.sql is run
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
     loadTabsForBoard(); // this board's tabs (+ their columns)
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
