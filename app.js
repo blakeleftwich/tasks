@@ -2743,8 +2743,8 @@ async function maybeConsumeInviteToken() {
   const { data: existing } = await supa.auth.getSession();
   if (existing.session) return; // already signed in — ?board= alone handles the join
   const ok = await confirmModal({
-    title: "Accept invite?",
-    message: "You've been invited to a shared project. Sign in on this device to join it.",
+    title: "Finish signing in?",
+    message: "Click Sign in to finish signing in on this device.",
     confirmLabel: "Sign in",
   });
   if (!ok) return;
