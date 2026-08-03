@@ -2610,6 +2610,7 @@ async function initSync() {
     await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
     supa = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
 
+    await maybeConsumeInviteToken(); // may establish a session (see below)
     const { data } = await supa.auth.getSession();
     await setUser(data.session ? data.session.user : null);
 
@@ -2727,6 +2728,35 @@ async function cleanupDuplicatePersonalBoards() {
     currentBoardId = (boards.find((b) => b.owner_id === user.id) || boards[0] || {}).id || null;
     if (currentBoardId) localStorage.setItem("currentBoardId", currentBoardId);
   }
+}
+
+/* A scanner-proof invite link. Discord/Slack preview bots and email security
+ * scanners prefetch every URL they see, and a Supabase action link is single-
+ * use — so the robot "clicks" it before the human can, and the human gets
+ * "expired". Instead, invite URLs carry the login token as ?invite_token=…
+ * (plus ?board=… to auto-join): loading the page consumes nothing, and the
+ * token is only exchanged after a real person clicks Sign in. */
+async function maybeConsumeInviteToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("invite_token");
+  if (!token) return;
+  const { data: existing } = await supa.auth.getSession();
+  if (existing.session) return; // already signed in — ?board= alone handles the join
+  const ok = await confirmModal({
+    title: "Accept invite?",
+    message: "You've been invited to a shared project. Sign in on this device to join it.",
+    confirmLabel: "Sign in",
+  });
+  if (!ok) return;
+  const vtype = params.get("invite_type") || "email";
+  let res = await supa.auth.verifyOtp({ type: vtype, token_hash: token });
+  if (res.error && vtype !== "email") res = await supa.auth.verifyOtp({ type: "email", token_hash: token });
+  if (res.error) {
+    console.error("Invite sign-in failed:", res.error.message);
+    alert("This invite link has already been used or expired — ask for a fresh one.");
+  }
+  // On success the session is stored; boot continues signed in and the
+  // ?board= param (cleaned up by maybeJoinFromLink) joins the project.
 }
 
 async function maybeJoinFromLink() {
