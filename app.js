@@ -2867,6 +2867,44 @@ async function pullRemote(maybeMigrate) {
   tasks = data.map(taskFromRow);
   adoptOrphanTasks(); // re-home null/orphaned tab keys onto the first tab
   saveLocal();
+  migrateDataUrlAttachments(); // background; shrinks legacy base64-heavy rows
+}
+
+/* Attachments added while signed out were stored as base64 data URLs inside
+ * the task row — and those megabyte rows then ride every sync for every
+ * member (an egress multiplier). Once signed in, move the bytes into the
+ * storage bucket and keep only the URL on the row. One-time per attachment;
+ * failures (e.g. bucket missing) are logged and retried on a later load. */
+async function migrateDataUrlAttachments() {
+  if (!user || !supa) return;
+  let moved = 0;
+  for (const t of tasks) {
+    const heavy = (t.blocks || []).filter(
+      (b) => (b.type === "image" || b.type === "file") && b.url && b.url.startsWith("data:")
+    );
+    if (!heavy.length) continue;
+    let changed = false;
+    for (const b of heavy) {
+      try {
+        const blob = await (await fetch(b.url)).blob();
+        const clean = (b.name || "file").replace(/[^\w.\-]+/g, "_");
+        const path = (currentBoardId || "personal") + "/" + b.id + "-" + clean;
+        const up = await supa.storage.from("attachments").upload(path, blob, { upsert: true });
+        if (up.error) throw up.error;
+        b.path = path;
+        b.url = supa.storage.from("attachments").getPublicUrl(path).data.publicUrl;
+        changed = true;
+        moved++;
+      } catch (e) {
+        console.warn("Could not move an embedded attachment to storage:", e.message || e);
+      }
+    }
+    if (changed) commitBlocks(t); // persists the row without the base64 payload
+  }
+  if (moved) {
+    console.log(`Moved ${moved} embedded attachment(s) to storage.`);
+    render();
+  }
 }
 
 // Manual recovery lever: re-add any tasks from the local backup that are missing
@@ -2904,17 +2942,43 @@ function subscribeRealtime() {
   if (realtimeChannel) return;
   realtimeChannel = supa
     .channel("tasks-sync")
-    // No filter: RLS limits what we receive. We reload the active board on any
-    // visible change, so a shared board updates live for everyone on it.
-    .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => {
+    // No filter: RLS limits what we receive. Each event carries the changed
+    // row and we apply just that one — re-downloading the whole board on
+    // every change was the app's biggest source of Supabase egress.
+    .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (payload) => {
       if (Date.now() < suppressRealtimeUntil) return; // ignore our own echoes
       if (document.activeElement && document.activeElement.closest(".card")) {
         pendingReload = true; // don't yank the board while typing
         return;
       }
-      pullRemote(false).then(render);
+      applyRealtimeChange(payload);
     })
     .subscribe();
+}
+
+// Apply one remote change in place; fall back to a full pull only when the
+// payload can't be applied precisely.
+function applyRealtimeChange(payload) {
+  if (payload.eventType === "DELETE") {
+    const id = payload.old && payload.old.id; // delete payloads carry only the key
+    if (!id) return void pullRemote(false).then(render);
+    const before = tasks.length;
+    tasks = tasks.filter((t) => t.id !== id);
+    if (tasks.length !== before) {
+      saveLocal();
+      render();
+    }
+    return;
+  }
+  const row = payload.new;
+  if (!row || !row.id) return void pullRemote(false).then(render);
+  if (currentBoardId && row.board_id !== currentBoardId) return; // another project's change
+  const task = taskFromRow(row);
+  const i = tasks.findIndex((t) => t.id === task.id);
+  if (i >= 0) tasks[i] = task;
+  else tasks.push(task);
+  saveLocal();
+  render();
 }
 
 // When the user finishes editing, apply any deferred remote changes.
