@@ -1,0 +1,14 @@
+{
+  "name": "Yadidit — Project Board",
+  "short_name": "Yadidit",
+  "description": "A simple project board: tabs, task sets, and cards — with due dates, tags, colours, and cross-device sync.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#f4f6fb",
+  "theme_color": "#10b981",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
