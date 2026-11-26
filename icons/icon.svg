@@ -6,5 +6,12 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="100" fill="url(#bg)"/>
-  <path d="M150 268 L226 344 L368 186" fill="none" stroke="#ffffff" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- tree tiers -->
+  <path fill="#ffffff" d="M256 142 L324 245 H188 Z"/>
+  <path fill="#ffffff" d="M256 205 L352 320 H160 Z"/>
+  <path fill="#ffffff" d="M256 272 L376 395 H136 Z"/>
+  <!-- trunk -->
+  <rect x="234" y="395" width="44" height="42" rx="10" fill="#ffffff"/>
+  <!-- star -->
+  <polygon fill="#fbbf24" points="256,58 266.6,85.4 295.9,87.0 273.1,105.6 280.7,134.0 256,118 231.3,134.0 238.9,105.6 216.1,87.0 245.4,85.4"/>
 </svg>
