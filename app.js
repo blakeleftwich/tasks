@@ -595,6 +595,7 @@ function persistTabs() {
     if (!tabs.length) return;
   }
   if (supa && user && currentBoardId) {
+    suppressRealtimeUntil = Date.now() + 1500; // ignore our own echoed boards event
     const b = boards.find((x) => x.id === currentBoardId);
     const activeCols = activeTab() ? activeTab().columns : categories;
     if (b) {
@@ -2993,6 +2994,7 @@ window.restoreTasksBackup = function restoreTasksBackup() {
 };
 
 let realtimeChannel = null;
+let realtimeJoinedOnce = false; // a re-join means events were missed meanwhile
 function subscribeRealtime() {
   if (realtimeChannel) return;
   realtimeChannel = supa
@@ -3008,8 +3010,89 @@ function subscribeRealtime() {
       }
       applyRealtimeChange(payload);
     })
-    .subscribe();
+    // Project-level changes (tabs/sets renamed, added, removed; project
+    // renamed) sync live too. Needs public.boards in the realtime
+    // publication (supabase-realtime-boards.sql); harmless without it —
+    // the catch-up resync covers those clients.
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "boards" }, (payload) => {
+      if (Date.now() < suppressRealtimeUntil) return; // ignore our own echoes
+      const row = payload.new;
+      if (!row || !row.id) return;
+      const b = boards.find((x) => x.id === row.id);
+      if (b) Object.assign(b, row);
+      if (row.id !== currentBoardId) return void renderBoardControls(); // a rename shows in the switcher
+      if (document.activeElement && document.activeElement.closest(".card")) {
+        pendingReload = true;
+        return;
+      }
+      const prevActive = activeTabKey;
+      loadTabsForBoard();
+      if (tabs.some((t) => t.key === prevActive)) activeTabKey = prevActive; // keep the user's tab
+      syncActiveCategories();
+      renderBoardControls();
+      render();
+    })
+    .subscribe((status) => {
+      if (status !== "SUBSCRIBED") return;
+      // Rejoined after a dropped connection (phone woke up, network blip):
+      // anything sent in between never arrived, so pull the board once.
+      if (realtimeJoinedOnce) resyncNow(true);
+      realtimeJoinedOnce = true;
+    });
 }
+
+/* ---------- Catch-up sync ----------
+ * Realtime only delivers while the websocket is connected; changes made while
+ * the app was asleep (backgrounded phone, closed laptop, lost signal) are
+ * missed silently. So the board re-pulls itself when the app comes back to
+ * the foreground, when the connection returns, after a realtime re-join, and
+ * on demand from the account menu ("Sync now"). */
+let lastResyncAt = 0;
+let resyncing = false;
+async function resyncNow(force) {
+  if (!supa || !user || resyncing) return;
+  if (!force && Date.now() - lastResyncAt < 15000) return; // keep egress small
+  resyncing = true;
+  lastResyncAt = Date.now();
+  try {
+    if (currentBoardId) {
+      // Fresh name + tabs for the active board (one small row).
+      const { data } = await supa.from("boards").select("*").eq("id", currentBoardId).maybeSingle();
+      if (data) {
+        const b = boards.find((x) => x.id === currentBoardId);
+        const tabsChanged = b && JSON.stringify(b.tabs || null) !== JSON.stringify(data.tabs || null);
+        if (b) Object.assign(b, data);
+        if (tabsChanged) {
+          const prevActive = activeTabKey;
+          loadTabsForBoard();
+          if (tabs.some((t) => t.key === prevActive)) activeTabKey = prevActive; // keep the user's tab
+          syncActiveCategories();
+        }
+      }
+    }
+    await pullRemote(false);
+    renderBoardControls();
+    render();
+  } finally {
+    resyncing = false;
+  }
+}
+
+// Coming back to the app: don't yank the board out from under an in-progress
+// edit — defer to the existing blur hook instead.
+function resyncOnReturn() {
+  if (!supa || !user) return;
+  if (document.activeElement && document.activeElement.closest(".card")) {
+    pendingReload = true;
+    return;
+  }
+  resyncNow(false);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") resyncOnReturn();
+});
+window.addEventListener("focus", resyncOnReturn);
+window.addEventListener("online", () => resyncNow(true));
 
 // Apply one remote change in place; fall back to a full pull only when the
 // payload can't be applied precisely.
@@ -3042,7 +3125,7 @@ document.addEventListener(
   () => {
     if (pendingReload && supa && user) {
       pendingReload = false;
-      pullRemote(false).then(render);
+      resyncNow(true);
     }
   },
   true
@@ -3218,6 +3301,16 @@ function renderAccountMenuSignedIn(menu) {
     });
   }
 
+  // Changes sync live, but this is the reassurance button: pull everything now.
+  const syncBtn = item("🔄 Sync now", async () => {
+    syncBtn.disabled = true;
+    syncBtn.textContent = "Syncing…";
+    await resyncNow(true);
+    syncBtn.disabled = false;
+    syncBtn.textContent = "✓ Synced";
+    setTimeout(() => (syncBtn.textContent = "🔄 Sync now"), 1600);
+  });
+
   appendCommonMenuItems(menu);
 
   item("Sign out on this device", async () => {
@@ -3384,8 +3477,7 @@ async function restoreSnapshot(snap) {
     tabs = snap.tabs;
     if (!tabs.some((x) => x.key === activeTabKey)) activeTabKey = tabs[0].key;
     syncActiveCategories();
-    saveLocalTabs();
-    persistTabs();
+    persistTabs(); // cloud when signed in, local storage otherwise
   }
   adoptOrphanTasks(); // never hide a task whose tab didn't come back
   saveLocal();
