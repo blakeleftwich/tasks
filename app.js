@@ -3164,6 +3164,8 @@ async function copyShareLink(btn) {
   }
 }
 
+let qrLib = null; // lazy-loaded QR encoder
+
 // A QR code of the share link: scanning it opens the project page, and after
 // sign-in the ?board= param joins the scanner to this project.
 async function showShareQr() {
@@ -3191,10 +3193,12 @@ async function showShareQr() {
   }
   overlay.hidden = false;
   try {
-    if (!window.QRCode) {
-      await loadScript("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/lib/browser.min.js");
+    if (!qrLib) {
+      // The npm package is CommonJS; jsdelivr's +esm wrapper is the loadable form.
+      const mod = await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");
+      qrLib = mod.default || mod;
     }
-    await window.QRCode.toCanvas(document.getElementById("qr-canvas"), url, {
+    await qrLib.toCanvas(document.getElementById("qr-canvas"), url, {
       width: 220,
       margin: 2,
     });
