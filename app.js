@@ -3226,6 +3226,10 @@ function renderAuthBar(message) {
     if (!menu.hidden) {
       const firstInput = menu.querySelector("input");
       if (firstInput) firstInput.focus();
+      // The board may have changed since the menu was built — re-mark the
+      // current project's colour swatch.
+      const cur = currentBoardTheme();
+      menu.querySelectorAll(".theme-swatch").forEach((x) => x.classList.toggle("sel", x.dataset.theme === cur));
     }
   });
 
@@ -3287,6 +3291,30 @@ function appendCommonMenuItems(menu) {
   view.addEventListener("click", () => toggleStackedView());
   menu.appendChild(view);
   applyView(); // sets the toggle's label to match the current view
+
+  // Page colour: one swatch per theme, applied to the current project.
+  const colorLabel = document.createElement("div");
+  colorLabel.className = "account-menu-label";
+  colorLabel.textContent = "Page color";
+  menu.appendChild(colorLabel);
+  const swatches = document.createElement("div");
+  swatches.className = "theme-swatches";
+  const cur = currentBoardTheme();
+  THEMES.forEach((key) => {
+    const s = document.createElement("button");
+    s.type = "button";
+    s.className = "theme-swatch" + (cur === key ? " sel" : "");
+    s.dataset.theme = key;
+    s.style.background = THEME_SWATCHES[key] || "#ffffff";
+    s.title = THEME_LABELS[key] || key;
+    s.setAttribute("aria-label", "Page color: " + (THEME_LABELS[key] || key));
+    s.addEventListener("click", () => {
+      setBoardTheme(key);
+      swatches.querySelectorAll(".theme-swatch").forEach((x) => x.classList.toggle("sel", x === s));
+    });
+    swatches.appendChild(s);
+  });
+  menu.appendChild(swatches);
 
   const backups = document.createElement("button");
   backups.className = "account-menu-item";
@@ -3995,25 +4023,31 @@ function applyTheme(key) {
   const root = document.documentElement;
   if (!key || key === "default") delete root.dataset.theme;
   else root.dataset.theme = key;
-  const btn = document.getElementById("theme-btn");
-  if (btn) btn.title = `Theme: ${THEME_LABELS[key] || "Default"} — click to change`;
 }
 function applyBoardTheme() {
   applyTheme(currentBoardTheme());
 }
-function cycleTheme() {
-  const next = THEMES[(THEMES.indexOf(currentBoardTheme()) + 1) % THEMES.length];
+// Pick a theme for the current board (from the account menu's swatches).
+function setBoardTheme(key) {
   const all = loadBoardThemes();
-  if (next === "default") delete all[themeBoardKey()];
-  else all[themeBoardKey()] = next;
+  if (!key || key === "default") delete all[themeBoardKey()];
+  else all[themeBoardKey()] = key;
   try {
     localStorage.setItem("boardThemes", JSON.stringify(all));
   } catch (e) {
     /* ignore */
   }
-  applyTheme(next);
+  applyTheme(key);
 }
-document.getElementById("theme-btn").addEventListener("click", cycleTheme);
+// One representative colour per theme for the menu's swatch row (each
+// theme's --bg, except beach which is a gradient — its sky colour stands in).
+const THEME_SWATCHES = {
+  default: "#f4f6fb", sand: "#faf4e8", mint: "#eef6f1", rose: "#fdf1f3", lavender: "#f2f1fb", slate: "#eceff4",
+  sky: "#e0f2fe", sunny: "#fff6d4", bubblegum: "#ffe3f1",
+  midnight: "#0f172a", carbon: "#151515",
+  neon: "#0a0a14", synthwave: "#1a0b2e", matrix: "#04140a",
+  beach: "#a6ddf1",
+};
 applyBoardTheme();
 
 document.addEventListener("keydown", (e) => {
