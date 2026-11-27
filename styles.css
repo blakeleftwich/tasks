@@ -537,6 +537,33 @@ html[data-theme="beach"] body::after {
   margin: 8px 0 0;
 }
 
+/* Backups (version history) modal */
+.backup-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.backup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.backup-row:last-child { border-bottom: none; }
+.backup-info { flex: 1; min-width: 0; }
+.backup-when { font-size: 0.9rem; font-weight: 600; }
+.backup-what { font-size: 0.78rem; color: var(--muted); }
+
 /* ---------- Toolbar ---------- */
 .toolbar {
   display: flex;

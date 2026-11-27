@@ -265,6 +265,7 @@ function saveLocal() {
   } catch (e) {
     console.error("Could not save locally.", e);
   }
+  snapshotHistory(false); // throttled version history (see below)
 }
 
 // Safety snapshot: keep the last non-empty task set per board in a separate key,
@@ -279,6 +280,60 @@ function backupTasks(boardId, arr) {
     localStorage.setItem(BACKUPS_KEY, JSON.stringify(all));
   } catch (e) {
     /* ignore quota */
+  }
+}
+
+// Version history: the last 10 snapshots per board (tasks + tabs), taken at
+// most every 10 minutes during normal edits and always right before something
+// destructive (tab delete, set delete, a restore). Restored from the account
+// menu ("Backups…"). Stored in this browser only.
+const HISTORY_KEY = "taskManager.history.v1";
+const HISTORY_MAX = 10;
+const HISTORY_MIN_GAP_MS = 10 * 60 * 1000;
+const historyLastAt = {}; // in-memory throttle so every saveLocal stays cheap
+
+function readHistory() {
+  try {
+    const all = JSON.parse(localStorage.getItem(HISTORY_KEY) || "{}");
+    return all && typeof all === "object" ? all : {};
+  } catch (e) {
+    return {};
+  }
+}
+function historyFor(boardId) {
+  const list = readHistory()[boardId || "__local__"];
+  return Array.isArray(list) ? list : [];
+}
+// force=true (destructive ops) skips the time gap so the pre-op state is kept.
+function snapshotHistory(force) {
+  if (!Array.isArray(tasks) || !tasks.length) return; // nothing worth keeping
+  const key = currentBoardId || "__local__";
+  if (!force && historyLastAt[key] && Date.now() - historyLastAt[key] < HISTORY_MIN_GAP_MS) return;
+  try {
+    const all = readHistory();
+    const list = Array.isArray(all[key]) ? all[key] : [];
+    const newest = list[0];
+    if (newest) {
+      const newestAt = new Date(newest.at).getTime();
+      historyLastAt[key] = Math.max(historyLastAt[key] || 0, newestAt);
+      if (!force && Date.now() - newestAt < HISTORY_MIN_GAP_MS) return;
+      // Skip identical states so the 10 slots always hold distinct versions.
+      if (JSON.stringify(newest.tasks) === JSON.stringify(tasks) && JSON.stringify(newest.tabs || null) === JSON.stringify(tabs)) return;
+    }
+    list.unshift({ at: nowIso(), tasks, tabs });
+    all[key] = list.slice(0, HISTORY_MAX);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(all));
+    historyLastAt[key] = Date.now();
+  } catch (e) {
+    // Quota: keep just this one snapshot for the board and move on.
+    try {
+      const all = readHistory();
+      all[key] = [{ at: nowIso(), tasks, tabs }];
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(all));
+      historyLastAt[key] = Date.now();
+    } catch (e2) {
+      /* give up silently */
+    }
   }
 }
 
@@ -603,6 +658,7 @@ async function deleteCategory(cat) {
     confirmLabel: "Delete",
   });
   if (!ok) return;
+  snapshotHistory(true); // keep the pre-delete state restorable from Backups
   affected.forEach((t) => {
     t.status = remaining[0].key;
     t.updated_at = nowIso();
@@ -1140,6 +1196,7 @@ async function deleteTab(tab) {
     confirmLabel: "Delete",
   });
   if (!ok) return;
+  snapshotHistory(true); // keep the pre-delete state restorable from Backups
   doomed.forEach((t) => remoteDelete(t.id));
   const doomedIds = new Set(doomed.map((t) => t.id));
   tasks = tasks.filter((t) => !doomedIds.has(t.id));
@@ -3067,6 +3124,30 @@ function renderAccountMenuSignIn(menu) {
   menu.appendChild(label);
   menu.appendChild(email);
   menu.appendChild(btn);
+  appendCommonMenuItems(menu);
+}
+
+// Menu items that apply whether or not the user is signed in: the stacked /
+// side-by-side view toggle and the local version-history backups.
+function appendCommonMenuItems(menu) {
+  const view = document.createElement("button");
+  view.className = "account-menu-item";
+  view.type = "button";
+  view.id = "menu-view-toggle";
+  view.addEventListener("click", () => toggleStackedView());
+  menu.appendChild(view);
+  applyView(); // sets the toggle's label to match the current view
+
+  const backups = document.createElement("button");
+  backups.className = "account-menu-item";
+  backups.type = "button";
+  backups.textContent = "🕘 Backups…";
+  backups.title = "Restore this project from an automatic backup";
+  backups.addEventListener("click", () => {
+    menu.hidden = true;
+    showBackups();
+  });
+  menu.appendChild(backups);
 }
 
 // Shown after the sign-in email is sent. The emailed link only signs in the
@@ -3137,6 +3218,8 @@ function renderAccountMenuSignedIn(menu) {
     });
   }
 
+  appendCommonMenuItems(menu);
+
   item("Sign out on this device", async () => {
     // scope "local": only this device — a global sign-out would also log out
     // every phone/tab where the user is signed in.
@@ -3206,6 +3289,116 @@ async function showShareQr() {
     console.error("QR code failed:", e);
     overlay.querySelector(".qr-hint").textContent = "Could not draw the QR code — use Copy link instead.";
   }
+}
+
+/* ---------- Backups (version history) ---------- */
+function formatSnapWhen(iso) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (new Date().toDateString() === d.toDateString()) return "Today " + time;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " + time;
+}
+
+function showBackups() {
+  const old = document.getElementById("backup-overlay");
+  if (old) old.remove(); // rebuild with a fresh list every time
+
+  const overlay = document.createElement("div");
+  overlay.id = "backup-overlay";
+  overlay.className = "modal-overlay";
+  const modal = document.createElement("div");
+  modal.className = "modal backup-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.innerHTML = `<h3 class="modal-title">Backups</h3>
+    <p class="backup-hint">Saved automatically in this browser — every few minutes while you work, and always right before a tab or task set is deleted. Restoring puts the whole project back the way it was.</p>`;
+
+  const list = document.createElement("div");
+  list.className = "backup-list";
+  const snaps = historyFor(currentBoardId);
+  if (!snaps.length) {
+    const p = document.createElement("p");
+    p.className = "backup-hint";
+    p.textContent = "No backups yet — they build up as you work.";
+    list.appendChild(p);
+  }
+  snaps.forEach((snap) => {
+    const row = document.createElement("div");
+    row.className = "backup-row";
+    const info = document.createElement("div");
+    info.className = "backup-info";
+    const when = document.createElement("div");
+    when.className = "backup-when";
+    when.textContent = formatSnapWhen(snap.at);
+    const nTabs = Array.isArray(snap.tabs) ? snap.tabs.length : 0;
+    const what = document.createElement("div");
+    what.className = "backup-what";
+    what.textContent =
+      `${snap.tasks.length} task${snap.tasks.length === 1 ? "" : "s"}` +
+      (nTabs ? ` · ${nTabs} tab${nTabs === 1 ? "" : "s"}` : "");
+    info.append(when, what);
+    const btn = document.createElement("button");
+    btn.className = "ghost-btn";
+    btn.type = "button";
+    btn.textContent = "Restore";
+    btn.addEventListener("click", () => restoreSnapshot(snap));
+    row.append(info, btn);
+    list.appendChild(row);
+  });
+  modal.appendChild(list);
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions";
+  const done = document.createElement("button");
+  done.className = "ghost-btn";
+  done.type = "button";
+  done.textContent = "Done";
+  done.addEventListener("click", () => overlay.remove());
+  actions.appendChild(done);
+  modal.appendChild(actions);
+
+  overlay.appendChild(modal);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Put the whole project (tasks + tabs) back to a snapshot, locally and — when
+// signed in — in the cloud: restored tasks are re-upserted and tasks that only
+// exist now (created after the snapshot) are deleted remotely.
+async function restoreSnapshot(snap) {
+  const ok = await confirmModal({
+    title: "Restore this backup?",
+    message:
+      `The project goes back to how it was at ${formatSnapWhen(snap.at)} ` +
+      `(${snap.tasks.length} task${snap.tasks.length === 1 ? "" : "s"}). ` +
+      "The current state is saved as a backup first, so a restore can itself be undone.",
+    confirmLabel: "Restore",
+  });
+  if (!ok) return;
+  snapshotHistory(true); // the current state becomes the newest backup
+  const beforeIds = tasks.map((t) => t.id);
+  tasks = snap.tasks.map(normalizeTask);
+  if (Array.isArray(snap.tabs) && snap.tabs.length) {
+    tabs = snap.tabs;
+    if (!tabs.some((x) => x.key === activeTabKey)) activeTabKey = tabs[0].key;
+    syncActiveCategories();
+    saveLocalTabs();
+    persistTabs();
+  }
+  adoptOrphanTasks(); // never hide a task whose tab didn't come back
+  saveLocal();
+  if (supa && user) {
+    const keep = new Set(tasks.map((t) => t.id));
+    beforeIds.forEach((id) => {
+      if (!keep.has(id)) remoteDelete(id);
+    });
+    if (tasks.length) persist(tasks);
+  }
+  const overlay = document.getElementById("backup-overlay");
+  if (overlay) overlay.remove();
+  render();
 }
 
 function renderBoardControls() {
@@ -3509,20 +3702,22 @@ document.addEventListener("gesturestart", (e) => e.preventDefault());
 document.addEventListener("gesturechange", (e) => e.preventDefault());
 
 // Stacked / side-by-side view toggle (a local view preference). Defaults to
-// stacked when the user hasn't chosen yet.
+// stacked when the user hasn't chosen yet. The button lives in the account menu.
 let stackedView = (localStorage.getItem("stackedView") ?? "1") === "1";
 function applyView() {
   board.classList.toggle("stacked", stackedView);
   document.body.classList.toggle("stacked-view", stackedView); // centre the tab bar to match
-  const btn = document.getElementById("view-toggle");
-  btn.textContent = stackedView ? "▥ Columns" : "▤ Stack";
-  btn.title = stackedView ? "Switch to side-by-side columns" : "Switch to a stacked view";
+  const btn = document.getElementById("menu-view-toggle");
+  if (btn) {
+    btn.textContent = stackedView ? "▥ Side-by-side columns" : "▤ Stacked view";
+    btn.title = stackedView ? "Switch to side-by-side columns" : "Switch to a stacked view";
+  }
 }
-document.getElementById("view-toggle").addEventListener("click", () => {
+function toggleStackedView() {
   stackedView = !stackedView;
   localStorage.setItem("stackedView", stackedView ? "1" : "0");
   applyView();
-});
+}
 applyView();
 
 /* ---------- Colour theme (per board, cycled with the palette button) ----------
