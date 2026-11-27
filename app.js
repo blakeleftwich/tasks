@@ -168,7 +168,7 @@ let expandedCardId = null; // the card expanded in place (view state, not persis
 let propsOpenForId = null; // card whose priority/due/colour options are revealed
 let selectedCardId = null; // keyboard-selected card (for shortcuts)
 let searchQuery = ""; // lowercased search filter
-let shownCompletedCols = new Set(); // task-set (column) keys currently revealing completed tasks
+let hiddenCompletedCols = new Set(); // task-set (column) keys currently hiding completed tasks (shown by default)
 // Collapsed task-set (column) keys — a local view preference, remembered across reloads.
 let collapsedSets = (() => {
   try {
@@ -1494,15 +1494,15 @@ function render() {
 
     // Low-profile "Show completed" toggle — only when expanded and it has completed items.
     if (!collapsed && completedInCol.length > 0) {
-      const shown = shownCompletedCols.has(col.key);
+      const shown = !hiddenCompletedCols.has(col.key);
       const scBtn = document.createElement("button");
       scBtn.className = "show-completed" + (shown ? " on" : "");
       scBtn.type = "button";
       scBtn.textContent = `${shown ? "Hide" : "Show"} completed (${completedInCol.length})`;
       scBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (shown) shownCompletedCols.delete(col.key);
-        else shownCompletedCols.add(col.key);
+        if (shown) hiddenCompletedCols.add(col.key);
+        else hiddenCompletedCols.delete(col.key);
         render();
       });
       column.querySelector(".add-row").before(scBtn);
@@ -3881,7 +3881,7 @@ function matchesSearch(task) {
 // Whether a task shows in the board right now: matches search AND (not completed,
 // unless its task set is currently revealing completed items).
 function isVisibleTask(task) {
-  return matchesSearch(task) && (!task.completed || shownCompletedCols.has(task.status));
+  return matchesSearch(task) && (!task.completed || !hiddenCompletedCols.has(task.status));
 }
 
 function visibleColumn(status) {
