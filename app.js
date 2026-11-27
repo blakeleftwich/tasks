@@ -3192,7 +3192,7 @@ async function showShareQr() {
   overlay.hidden = false;
   try {
     if (!window.QRCode) {
-      await loadScript("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js");
+      await loadScript("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/lib/browser.min.js");
     }
     await window.QRCode.toCanvas(document.getElementById("qr-canvas"), url, {
       width: 220,
