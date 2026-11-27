@@ -3255,13 +3255,6 @@ function renderBoardControls() {
   });
   wrap.appendChild(switchBtn);
 
-  const shareBtn = document.createElement("button");
-  shareBtn.className = "ghost-btn";
-  shareBtn.textContent = "🔗 Share";
-  shareBtn.title = "Copy a link that lets a teammate join this project";
-  shareBtn.addEventListener("click", () => copyShareLink(shareBtn));
-  wrap.appendChild(shareBtn);
-
   // Switch dropdown: pick a board, hover for a delete/leave action, "+ New" at the bottom.
   const TRASH = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
   const EXIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
