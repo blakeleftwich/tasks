@@ -3043,8 +3043,9 @@ function renderAuthBar(message) {
 
 // Shown after the sign-in email is sent. The emailed link only signs in the
 // browser it opens in, so a home-screen web app (separate storage on iOS)
-// would never get the session — the 6-digit code from the same email signs
-// in right here instead.
+// would never get the session — the one-time code from the same email signs
+// in right here instead. (This project issues 8-digit codes; Supabase allows
+// 6-10, hence maxLength 10.)
 function renderCodeEntry(email) {
   const bar = document.getElementById("auth-bar");
   bar.innerHTML = "";
@@ -3055,10 +3056,10 @@ function renderCodeEntry(email) {
   code.type = "text";
   code.inputMode = "numeric";
   code.autocomplete = "one-time-code";
-  code.placeholder = "123456";
-  code.maxLength = 6;
+  code.placeholder = "12345678";
+  code.maxLength = 10;
   code.className = "code-input";
-  code.setAttribute("aria-label", "6-digit sign-in code");
+  code.setAttribute("aria-label", "Sign-in code from the email");
   const btn = document.createElement("button");
   btn.className = "ghost-btn";
   btn.textContent = "Verify";

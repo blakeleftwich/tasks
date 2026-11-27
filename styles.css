@@ -441,7 +441,7 @@ html[data-theme="beach"] body::after {
   padding: 6px 9px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  width: 92px;
+  width: 128px;
   text-align: center;
 }
 
