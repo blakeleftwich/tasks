@@ -434,6 +434,17 @@ html[data-theme="beach"] body::after {
 .auth-bar .user-email { color: var(--text); font-weight: 500; }
 .auth-bar .auth-msg { color: var(--done); }
 
+.auth-bar .code-input {
+  font: inherit;
+  font-size: 0.95rem;
+  letter-spacing: 3px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 92px;
+  text-align: center;
+}
+
 /* ---------- Toolbar ---------- */
 .toolbar {
   display: flex;

@@ -3032,12 +3032,53 @@ function renderAuthBar(message) {
         options: { emailRedirectTo: window.location.origin },
       });
       btn.disabled = false;
-      renderAuthBar(error ? "Error: " + error.message : "Check your email for a sign-in link.");
+      if (error) renderAuthBar("Error: " + error.message);
+      else renderCodeEntry(email.value);
     });
     email.addEventListener("keydown", (e) => e.key === "Enter" && btn.click());
     bar.appendChild(email);
     bar.appendChild(btn);
   }
+}
+
+// Shown after the sign-in email is sent. The emailed link only signs in the
+// browser it opens in, so a home-screen web app (separate storage on iOS)
+// would never get the session — the 6-digit code from the same email signs
+// in right here instead.
+function renderCodeEntry(email) {
+  const bar = document.getElementById("auth-bar");
+  bar.innerHTML = "";
+  const span = document.createElement("span");
+  span.className = "auth-msg";
+  span.textContent = "Check your email — click the link, or enter the code:";
+  const code = document.createElement("input");
+  code.type = "text";
+  code.inputMode = "numeric";
+  code.autocomplete = "one-time-code";
+  code.placeholder = "123456";
+  code.maxLength = 6;
+  code.className = "code-input";
+  code.setAttribute("aria-label", "6-digit sign-in code");
+  const btn = document.createElement("button");
+  btn.className = "ghost-btn";
+  btn.textContent = "Verify";
+  btn.addEventListener("click", async () => {
+    const token = code.value.trim();
+    if (token.length < 6) return code.focus();
+    btn.disabled = true;
+    const { error } = await supa.auth.verifyOtp({ email, token, type: "email" });
+    btn.disabled = false;
+    if (error) {
+      span.textContent = "Error: " + error.message + " — try again:";
+      code.select();
+    }
+    // On success onAuthStateChange → setUser re-renders the bar signed in.
+  });
+  code.addEventListener("keydown", (e) => e.key === "Enter" && btn.click());
+  bar.appendChild(span);
+  bar.appendChild(code);
+  bar.appendChild(btn);
+  code.focus();
 }
 
 function renderBoardControls() {

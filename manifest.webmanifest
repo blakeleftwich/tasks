@@ -3,7 +3,7 @@
   "short_name": "Yadidit",
   "description": "A simple project board: tabs, task sets, and cards — with due dates, tags, colours, and cross-device sync.",
   "start_url": "/",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#f4f6fb",
   "theme_color": "#10b981",
   "icons": [
