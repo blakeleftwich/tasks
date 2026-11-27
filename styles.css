@@ -405,8 +405,9 @@ html[data-theme="beach"] body::after {
   border-color: var(--hover-border);
 }
 
-/* ---------- Auth bar ---------- */
+/* ---------- Auth bar / account menu ---------- */
 .auth-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -414,35 +415,126 @@ html[data-theme="beach"] body::after {
   color: var(--muted);
 }
 
-.auth-bar input[type="email"] {
-  font: inherit;
-  font-size: 0.85rem;
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  min-width: 180px;
-}
-
-.auth-bar .synced-dot {
-  width: 8px;
-  height: 8px;
+.account-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--done);
+  border: 1px solid var(--border);
+  background: var(--card-bg, #fff);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
   flex: none;
 }
 
-.auth-bar .user-email { color: var(--text); font-weight: 500; }
-.auth-bar .auth-msg { color: var(--done); }
+.account-btn:hover { border-color: var(--hover-border); }
 
-.auth-bar .code-input {
+.account-btn.signed-in {
+  background: var(--done);
+  border-color: var(--done);
+  color: #fff;
+}
+
+.account-initial {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.account-btn .synced-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--done);
+  border: 2px solid var(--bg);
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 230px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-menu-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+.account-menu-email {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu input[type="email"] {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.account-menu .auth-msg { color: var(--done); font-size: 0.8rem; padding: 0 2px; }
+
+.account-menu-item {
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.account-menu-item:hover { background: var(--hover-bg, rgba(0, 0, 0, 0.05)); }
+
+.account-menu .code-input {
   font: inherit;
   font-size: 0.95rem;
   letter-spacing: 3px;
-  padding: 6px 9px;
+  padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  width: 128px;
+  width: 100%;
+  box-sizing: border-box;
   text-align: center;
+}
+
+/* QR share modal */
+.qr-modal { text-align: center; }
+.qr-modal canvas {
+  background: #fff;
+  border-radius: 10px;
+  margin: 10px auto 2px;
+  display: block;
+}
+.qr-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 8px 0 0;
 }
 
 /* ---------- Toolbar ---------- */
@@ -1575,7 +1667,7 @@ body { padding-bottom: 46px; }
   .date-nav { justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
   .date-display { font-size: 0.88rem; padding: 5px 8px; }
   .header-right { width: 100%; justify-content: space-between; }
-  .auth-bar .user-email { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-menu { min-width: 210px; }
 
   /* Toolbar in two tidy rows: [search | view] then the add buttons. */
   .toolbar { padding: 8px clamp(12px, 4vw, 40px) 0; gap: 8px; }

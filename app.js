@@ -2610,6 +2610,11 @@ async function initSync() {
     await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
     supa = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
 
+    // Remember a share link's board while signed out, so the join survives a
+    // sign-in that reloads the page without the ?board= param.
+    const shareParam = new URLSearchParams(window.location.search).get("board");
+    if (shareParam) localStorage.setItem("pendingJoinBoard", shareParam);
+
     await maybeConsumeInviteToken(); // may establish a session (see below)
     const { data } = await supa.auth.getSession();
     await setUser(data.session ? data.session.user : null);
@@ -2760,9 +2765,14 @@ async function maybeConsumeInviteToken() {
 }
 
 async function maybeJoinFromLink() {
-  const param = new URLSearchParams(window.location.search).get("board");
+  const urlParam = new URLSearchParams(window.location.search).get("board");
+  // A share link opened while signed out stashes the board id (see initSync):
+  // if sign-in finishes on a fresh page load (emailed link) instead of in
+  // place (code entry), the join still happens.
+  const param = urlParam || localStorage.getItem("pendingJoinBoard");
+  localStorage.removeItem("pendingJoinBoard");
   if (!param) return null;
-  history.replaceState({}, "", window.location.pathname); // tidy the URL
+  if (urlParam) history.replaceState({}, "", window.location.pathname); // tidy the URL
   const { error } = await supa.from("board_members").upsert({ board_id: param, user_id: user.id });
   if (error) {
     console.error("Could not join shared board:", error.message);
@@ -2829,18 +2839,6 @@ async function createBoard() {
   boards.push(board);
   await switchBoard(board.id);
   persistTabs(); // save the initial single-category tab to this new board
-}
-
-async function shareBoard(btn) {
-  const url = window.location.origin + window.location.pathname + "?board=" + currentBoardId;
-  try {
-    await navigator.clipboard.writeText(url);
-    const original = btn.textContent;
-    btn.textContent = "✓ Link copied";
-    setTimeout(() => (btn.textContent = original), 1600);
-  } catch (e) {
-    window.prompt("Copy this share link:", url);
-  }
 }
 
 async function pullRemote(maybeMigrate) {
@@ -2993,52 +2991,82 @@ document.addEventListener(
   true
 );
 
+/* ---------- Account button + menu ----------
+ * One round button in the header. Signed out it opens the sign-in form;
+ * signed in it shows the user's initial and opens account + sharing actions
+ * (copy share link, QR code, sign out). */
 function renderAuthBar(message) {
   const bar = document.getElementById("auth-bar");
   bar.innerHTML = "";
+
+  const btn = document.createElement("button");
+  btn.className = "account-btn" + (user ? " signed-in" : "");
+  btn.type = "button";
+  btn.setAttribute("aria-label", user ? "Account and sharing" : "Sign in");
+  btn.title = user ? user.email || "Account" : "Sign in to sync";
+  btn.innerHTML = user
+    ? `<span class="account-initial">${(user.email || "?")[0].toUpperCase()}</span><span class="synced-dot" title="Synced"></span>`
+    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+
+  const menu = document.createElement("div");
+  menu.id = "account-menu";
+  menu.className = "account-menu";
+  menu.hidden = true;
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      const firstInput = menu.querySelector("input");
+      if (firstInput) firstInput.focus();
+    }
+  });
+
+  bar.appendChild(btn);
+  bar.appendChild(menu);
+
+  if (user) renderAccountMenuSignedIn(menu);
+  else renderAccountMenuSignIn(menu);
+
   if (message) {
-    const span = document.createElement("span");
+    const span = document.createElement("div");
     span.className = "auth-msg";
     span.textContent = message;
-    bar.appendChild(span);
-    return;
+    menu.prepend(span);
+    menu.hidden = false; // surface the message without needing a click
   }
-  if (user) {
-    bar.innerHTML = `<span class="synced-dot" title="Synced"></span>
-      <span class="user-email">${user.email || "Signed in"}</span>`;
-    const out = document.createElement("button");
-    out.className = "ghost-btn";
-    out.textContent = "Sign out";
-    out.addEventListener("click", async () => {
-      await supa.auth.signOut();
-      if (realtimeChannel) {
-        supa.removeChannel(realtimeChannel);
-        realtimeChannel = null;
-      }
+}
+
+function renderAccountMenuSignIn(menu) {
+  menu.innerHTML = "";
+  const label = document.createElement("div");
+  label.className = "account-menu-label";
+  label.textContent = "Sign in to sync and share";
+  const email = document.createElement("input");
+  email.type = "email";
+  email.placeholder = "you@email.com";
+  email.autocomplete = "email";
+  const btn = document.createElement("button");
+  btn.className = "ghost-btn";
+  btn.textContent = "Email me a sign-in link";
+  btn.addEventListener("click", async () => {
+    if (!email.value) return email.focus();
+    btn.disabled = true;
+    const { error } = await supa.auth.signInWithOtp({
+      email: email.value,
+      options: { emailRedirectTo: window.location.origin },
     });
-    bar.appendChild(out);
-  } else {
-    const email = document.createElement("input");
-    email.type = "email";
-    email.placeholder = "you@email.com";
-    const btn = document.createElement("button");
-    btn.className = "ghost-btn";
-    btn.textContent = "Sign in to sync";
-    btn.addEventListener("click", async () => {
-      if (!email.value) return email.focus();
-      btn.disabled = true;
-      const { error } = await supa.auth.signInWithOtp({
-        email: email.value,
-        options: { emailRedirectTo: window.location.origin },
-      });
-      btn.disabled = false;
-      if (error) renderAuthBar("Error: " + error.message);
-      else renderCodeEntry(email.value);
-    });
-    email.addEventListener("keydown", (e) => e.key === "Enter" && btn.click());
-    bar.appendChild(email);
-    bar.appendChild(btn);
-  }
+    btn.disabled = false;
+    if (error) {
+      label.textContent = "Error: " + error.message;
+    } else {
+      renderCodeEntry(menu, email.value);
+    }
+  });
+  email.addEventListener("keydown", (e) => e.key === "Enter" && btn.click());
+  menu.appendChild(label);
+  menu.appendChild(email);
+  menu.appendChild(btn);
 }
 
 // Shown after the sign-in email is sent. The emailed link only signs in the
@@ -3046,11 +3074,10 @@ function renderAuthBar(message) {
 // would never get the session — the one-time code from the same email signs
 // in right here instead. (This project issues 8-digit codes; Supabase allows
 // 6-10, hence maxLength 10.)
-function renderCodeEntry(email) {
-  const bar = document.getElementById("auth-bar");
-  bar.innerHTML = "";
-  const span = document.createElement("span");
-  span.className = "auth-msg";
+function renderCodeEntry(menu, email) {
+  menu.innerHTML = "";
+  const span = document.createElement("div");
+  span.className = "account-menu-label";
   span.textContent = "Check your email — click the link, or enter the code:";
   const code = document.createElement("input");
   code.type = "text";
@@ -3076,10 +3103,105 @@ function renderCodeEntry(email) {
     // On success onAuthStateChange → setUser re-renders the bar signed in.
   });
   code.addEventListener("keydown", (e) => e.key === "Enter" && btn.click());
-  bar.appendChild(span);
-  bar.appendChild(code);
-  bar.appendChild(btn);
+  menu.appendChild(span);
+  menu.appendChild(code);
+  menu.appendChild(btn);
   code.focus();
+}
+
+function renderAccountMenuSignedIn(menu) {
+  menu.innerHTML = "";
+  const who = document.createElement("div");
+  who.className = "account-menu-label account-menu-email";
+  who.textContent = user.email || "Signed in";
+  menu.appendChild(who);
+
+  const item = (text, onClick) => {
+    const b = document.createElement("button");
+    b.className = "account-menu-item";
+    b.type = "button";
+    b.textContent = text;
+    b.addEventListener("click", onClick);
+    menu.appendChild(b);
+    return b;
+  };
+
+  if (currentBoardId) {
+    const copyBtn = item("🔗 Copy share link", async () => {
+      await copyShareLink(copyBtn);
+    });
+    copyBtn.title = "Anyone who opens the link (signed in) joins this project";
+    item("📱 Share with a QR code", () => {
+      menu.hidden = true;
+      showShareQr();
+    });
+  }
+
+  item("Sign out on this device", async () => {
+    // scope "local": only this device — a global sign-out would also log out
+    // every phone/tab where the user is signed in.
+    await supa.auth.signOut({ scope: "local" });
+    if (realtimeChannel) {
+      supa.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+  });
+}
+
+function shareUrlForCurrentBoard() {
+  return window.location.origin + window.location.pathname + "?board=" + currentBoardId;
+}
+
+async function copyShareLink(btn) {
+  const url = shareUrlForCurrentBoard();
+  try {
+    await navigator.clipboard.writeText(url);
+    const original = btn.textContent;
+    btn.textContent = "✓ Link copied";
+    setTimeout(() => (btn.textContent = original), 1600);
+  } catch (e) {
+    window.prompt("Copy this share link:", url);
+  }
+}
+
+// A QR code of the share link: scanning it opens the project page, and after
+// sign-in the ?board= param joins the scanner to this project.
+async function showShareQr() {
+  const url = shareUrlForCurrentBoard();
+  let overlay = document.getElementById("qr-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "qr-overlay";
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `<div class="modal qr-modal" role="dialog" aria-modal="true" aria-label="Share by QR code">
+        <h3 class="modal-title">Scan to join this project</h3>
+        <canvas id="qr-canvas" width="220" height="220"></canvas>
+        <p class="qr-hint">Point a phone camera here. After signing in, they're added to the project automatically.</p>
+        <div class="modal-actions">
+          <button id="qr-copy" class="ghost-btn" type="button">Copy link</button>
+          <button id="qr-done" class="ghost-btn" type="button">Done</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.hidden = true;
+    });
+    overlay.querySelector("#qr-done").addEventListener("click", () => (overlay.hidden = true));
+    overlay.querySelector("#qr-copy").addEventListener("click", (e) => copyShareLink(e.target));
+  }
+  overlay.hidden = false;
+  try {
+    if (!window.QRCode) {
+      await loadScript("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js");
+    }
+    await window.QRCode.toCanvas(document.getElementById("qr-canvas"), url, {
+      width: 220,
+      margin: 2,
+    });
+  } catch (e) {
+    console.error("QR code failed:", e);
+    overlay.querySelector(".qr-hint").textContent = "Could not draw the QR code — use Copy link instead.";
+  }
 }
 
 function renderBoardControls() {
@@ -3133,7 +3255,7 @@ function renderBoardControls() {
   shareBtn.className = "ghost-btn";
   shareBtn.textContent = "🔗 Share";
   shareBtn.title = "Copy a link that lets a teammate join this project";
-  shareBtn.addEventListener("click", () => shareBoard(shareBtn));
+  shareBtn.addEventListener("click", () => copyShareLink(shareBtn));
   wrap.appendChild(shareBtn);
 
   // Switch dropdown: pick a board, hover for a delete/leave action, "+ New" at the bottom.
@@ -3294,6 +3416,12 @@ function startRename(nameBtn, board) {
 document.addEventListener("click", (e) => {
   const menu = document.getElementById("board-menu");
   if (menu && !menu.hidden && !e.target.closest("#board-menu")) menu.hidden = true;
+});
+
+// Close the account menu when clicking outside the auth bar.
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("account-menu");
+  if (menu && !menu.hidden && !e.target.closest(".auth-bar")) menu.hidden = true;
 });
 
 // Click outside a tag menu closes it.
