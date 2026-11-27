@@ -403,7 +403,7 @@ html[data-theme="beach"] body::after {
   height: 36px;
   border-radius: 50%;
   border: 1px solid var(--border);
-  background: var(--card-bg, #fff);
+  background: var(--surface);
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -443,7 +443,8 @@ html[data-theme="beach"] body::after {
   right: 0;
   z-index: 60;
   min-width: 230px;
-  background: var(--card-bg, #fff);
+  background: var(--surface);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
@@ -475,6 +476,8 @@ html[data-theme="beach"] body::after {
   border-radius: 8px;
   width: 100%;
   box-sizing: border-box;
+  background: var(--field, var(--bg));
+  color: var(--text);
 }
 
 .account-menu .auth-msg { color: var(--done); font-size: 0.8rem; padding: 0 2px; }
@@ -511,7 +514,7 @@ html[data-theme="beach"] body::after {
   cursor: pointer;
 }
 
-.account-menu-item:hover { background: var(--hover-bg, rgba(0, 0, 0, 0.05)); }
+.account-menu-item:hover { background: var(--hover); }
 
 .account-menu .code-input {
   font: inherit;
@@ -523,6 +526,8 @@ html[data-theme="beach"] body::after {
   width: 100%;
   box-sizing: border-box;
   text-align: center;
+  background: var(--field, var(--bg));
+  color: var(--text);
 }
 
 /* QR share modal */
