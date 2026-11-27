@@ -199,6 +199,7 @@ let taskTabSyncable = false; // whether the tasks.tab column exists yet
 let assigneeSyncable = false; // whether the tasks.assignee column exists yet
 let attachmentsSyncable = false; // whether the tasks.attachments column exists yet
 let blocksSyncable = false; // whether the tasks.blocks column exists yet
+let boardSnapshotsSyncable = false; // whether the board_snapshots table exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
 
@@ -266,6 +267,7 @@ function saveLocal() {
     console.error("Could not save locally.", e);
   }
   snapshotHistory(false); // throttled version history (see below)
+  cloudSnapshot(false); // throttled shared backup (fire-and-forget; see below)
 }
 
 // Safety snapshot: keep the last non-empty task set per board in a separate key,
@@ -334,6 +336,67 @@ function snapshotHistory(force) {
     } catch (e2) {
       /* give up silently */
     }
+  }
+}
+
+// Shared cloud backups: the same idea as the local history, but written to the
+// board_snapshots table so EVERY member of a shared project can restore them,
+// no matter whose browser made the mistake. Probe-gated until
+// supabase-board-snapshots.sql runs. Throttled harder than the local history
+// (one per ~30 minutes of activity) to keep rows and egress small; destructive
+// operations always snapshot first. Fire-and-forget — never blocks the UI.
+const CLOUD_SNAP_MAX = 20;
+const CLOUD_SNAP_MIN_GAP_MS = 30 * 60 * 1000;
+const cloudSnapLastAt = {}; // boardId -> ms, seeded from the newest remote row
+let cloudSnapBusy = false;
+async function cloudSnapshot(force, reason) {
+  if (!supa || !user || !currentBoardId || !boardSnapshotsSyncable) return;
+  if (!Array.isArray(tasks) || !tasks.length || cloudSnapBusy) return;
+  const boardId = currentBoardId;
+  if (!force && cloudSnapLastAt[boardId] && Date.now() - cloudSnapLastAt[boardId] < CLOUD_SNAP_MIN_GAP_MS) return;
+  cloudSnapBusy = true;
+  // Deep-copy now, synchronously: the caller may mutate tasks/tabs right after
+  // this call (that's the point of the pre-delete snapshot).
+  const payloadTasks = JSON.parse(JSON.stringify(tasks));
+  const payloadTabs = JSON.parse(JSON.stringify(tabs));
+  try {
+    if (!force && cloudSnapLastAt[boardId] == null) {
+      // First attempt since load: learn when the newest snapshot was taken
+      // (any member's), so fresh page loads don't each add one.
+      const { data } = await supa
+        .from("board_snapshots")
+        .select("created_at")
+        .eq("board_id", boardId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      cloudSnapLastAt[boardId] = data && data[0] ? new Date(data[0].created_at).getTime() : 1;
+      if (Date.now() - cloudSnapLastAt[boardId] < CLOUD_SNAP_MIN_GAP_MS) return;
+    }
+    const { error } = await supa.from("board_snapshots").insert({
+      id: makeId(),
+      board_id: boardId,
+      created_by: user.id,
+      by_email: user.email || null,
+      reason: reason || "auto",
+      task_count: payloadTasks.length,
+      tab_count: Array.isArray(payloadTabs) ? payloadTabs.length : 0,
+      tasks: payloadTasks,
+      tabs: payloadTabs,
+    });
+    if (error) return void console.warn("Cloud backup failed:", error.message);
+    cloudSnapLastAt[boardId] = Date.now();
+    // Prune: keep only the newest CLOUD_SNAP_MAX per project.
+    const { data: extra } = await supa
+      .from("board_snapshots")
+      .select("id")
+      .eq("board_id", boardId)
+      .order("created_at", { ascending: false })
+      .range(CLOUD_SNAP_MAX, CLOUD_SNAP_MAX + 49);
+    if (extra && extra.length) {
+      await supa.from("board_snapshots").delete().in("id", extra.map((r) => r.id));
+    }
+  } finally {
+    cloudSnapBusy = false;
   }
 }
 
@@ -660,6 +723,7 @@ async function deleteCategory(cat) {
   });
   if (!ok) return;
   snapshotHistory(true); // keep the pre-delete state restorable from Backups
+  cloudSnapshot(true, `before deleting set “${cat.label}”`);
   affected.forEach((t) => {
     t.status = remaining[0].key;
     t.updated_at = nowIso();
@@ -1198,6 +1262,7 @@ async function deleteTab(tab) {
   });
   if (!ok) return;
   snapshotHistory(true); // keep the pre-delete state restorable from Backups
+  cloudSnapshot(true, `before deleting tab “${tab.label}”`);
   doomed.forEach((t) => remoteDelete(t.id));
   const doomedIds = new Set(doomed.map((t) => t.id));
   tasks = tasks.filter((t) => !doomedIds.has(t.id));
@@ -2713,6 +2778,8 @@ async function setUser(nextUser) {
     attachmentsSyncable = !probeAttach.error; // false until supabase-attachments.sql is run
     const probeBlocks = await supa.from("tasks").select("blocks").limit(1);
     blocksSyncable = !probeBlocks.error; // false until supabase-blocks.sql is run
+    const probeSnaps = await supa.from("board_snapshots").select("id").limit(1);
+    boardSnapshotsSyncable = !probeSnaps.error; // false until supabase-board-snapshots.sql is run
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
     loadTabsForBoard(); // this board's tabs (+ their columns)
     await pullRemote(firstSignIn); // migrate local tasks into the personal board on first sign-in
@@ -3404,7 +3471,15 @@ function showBackups() {
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
   modal.innerHTML = `<h3 class="modal-title">Backups</h3>
-    <p class="backup-hint">Saved automatically in this browser — every few minutes while you work, and always right before a tab or task set is deleted. Restoring puts the whole project back the way it was.</p>`;
+    <p class="backup-hint">Saved automatically — every few minutes in this browser, and always right before a tab or task set is deleted. Restoring puts the whole project back the way it was.</p>`;
+
+  const cloudAvailable = !!(supa && user && currentBoardId && boardSnapshotsSyncable);
+  if (cloudAvailable) {
+    const sub = document.createElement("div");
+    sub.className = "backup-subhead";
+    sub.textContent = "On this device";
+    modal.appendChild(sub);
+  }
 
   const list = document.createElement("div");
   list.className = "backup-list";
@@ -3440,6 +3515,78 @@ function showBackups() {
   });
   modal.appendChild(list);
 
+  // Shared cloud backups: saved by every member's app (about one per half hour
+  // of activity + before deletes), restorable by any member on any device.
+  if (cloudAvailable) {
+    const sub = document.createElement("div");
+    sub.className = "backup-subhead";
+    sub.textContent = "In the cloud — all members";
+    modal.appendChild(sub);
+    const cloudList = document.createElement("div");
+    cloudList.className = "backup-list";
+    const status = document.createElement("p");
+    status.className = "backup-hint";
+    status.textContent = "Loading…";
+    cloudList.appendChild(status);
+    modal.appendChild(cloudList);
+
+    supa
+      .from("board_snapshots")
+      .select("id,created_at,by_email,reason,task_count,tab_count")
+      .eq("board_id", currentBoardId)
+      .order("created_at", { ascending: false })
+      .limit(CLOUD_SNAP_MAX)
+      .then(({ data, error }) => {
+        if (error) {
+          status.textContent = "Could not load cloud backups — try again.";
+          return;
+        }
+        if (!data || !data.length) {
+          status.textContent = "No cloud backups yet — they build up as members work.";
+          return;
+        }
+        cloudList.textContent = "";
+        data.forEach((s) => {
+          const row = document.createElement("div");
+          row.className = "backup-row";
+          const info = document.createElement("div");
+          info.className = "backup-info";
+          const when = document.createElement("div");
+          when.className = "backup-when";
+          when.textContent = formatSnapWhen(s.created_at);
+          const who = s.by_email ? (s.by_email === user.email ? "you" : s.by_email) : "a member";
+          const what = document.createElement("div");
+          what.className = "backup-what";
+          what.textContent =
+            `${s.task_count} task${s.task_count === 1 ? "" : "s"}` +
+            (s.tab_count ? ` · ${s.tab_count} tab${s.tab_count === 1 ? "" : "s"}` : "") +
+            ` · by ${who}` +
+            (s.reason && s.reason !== "auto" ? ` · ${s.reason}` : "");
+          info.append(when, what);
+          const btn = document.createElement("button");
+          btn.className = "ghost-btn";
+          btn.type = "button";
+          btn.textContent = "Restore";
+          btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            const { data: full, error: err } = await supa
+              .from("board_snapshots")
+              .select("created_at,tasks,tabs")
+              .eq("id", s.id)
+              .maybeSingle();
+            btn.disabled = false;
+            if (err || !full) {
+              what.textContent = "Could not load this backup — try again.";
+              return;
+            }
+            restoreSnapshot({ at: full.created_at, tasks: full.tasks, tabs: full.tabs });
+          });
+          row.append(info, btn);
+          cloudList.appendChild(row);
+        });
+      });
+  }
+
   const actions = document.createElement("div");
   actions.className = "modal-actions";
   const done = document.createElement("button");
@@ -3471,6 +3618,7 @@ async function restoreSnapshot(snap) {
   });
   if (!ok) return;
   snapshotHistory(true); // the current state becomes the newest backup
+  cloudSnapshot(true, "before restore");
   const beforeIds = tasks.map((t) => t.id);
   tasks = snap.tasks.map(normalizeTask);
   if (Array.isArray(snap.tabs) && snap.tabs.length) {
