@@ -1489,7 +1489,13 @@ li.item-drag-clone {
   color: var(--muted);
 }
 
-.due-input {
+.due-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.due-input,
+.due-time-input {
   font: inherit;
   font-size: 0.8rem;
   padding: 5px 8px;

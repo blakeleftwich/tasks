@@ -199,6 +199,7 @@ let taskTabSyncable = false; // whether the tasks.tab column exists yet
 let assigneeSyncable = false; // whether the tasks.assignee column exists yet
 let attachmentsSyncable = false; // whether the tasks.attachments column exists yet
 let blocksSyncable = false; // whether the tasks.blocks column exists yet
+let dueTimeSyncable = false; // whether the tasks.due_time column exists yet
 let boardSnapshotsSyncable = false; // whether the board_snapshots table exists yet
 let suppressRealtimeUntil = 0; // ignore our own echoed writes briefly
 let pendingReload = false; // a remote change arrived while editing
@@ -222,6 +223,19 @@ function keyToDate(key) {
 // Short date for the due-date badge (the only date still shown).
 function formatShort(key) {
   return keyToDate(key).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+// "HH:MM" (24h) → locale time, e.g. "2:30 PM".
+function formatTime(hm) {
+  const [h, m] = hm.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+// Accept "HH:MM" or "HH:MM:SS" (DB time columns); anything else → null.
+function normTime(v) {
+  if (typeof v !== "string") return null;
+  const m = v.match(/^(\d{2}:\d{2})(:\d{2})?$/);
+  return m ? m[1] : null;
 }
 
 /* =====================================================================
@@ -425,6 +439,7 @@ function normalizeTask(t) {
     // search and for clients/DBs that predate the blocks column).
     notes: blockNotes(blocks),
     due: t.due || null,
+    dueTime: normTime(t.dueTime != null ? t.dueTime : t.due_time), // DB rows arrive snake_case
     priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : null,
     label: t.label || null,
     tag: t.tag || null,
@@ -508,7 +523,15 @@ function group(status) {
 }
 
 function isOverdue(task) {
-  return task.due && task.due < todayKey() && !task.completed;
+  if (!task.due || task.completed) return false;
+  const today = todayKey();
+  if (task.due < today) return true;
+  if (task.due === today && task.dueTime) {
+    const now = new Date();
+    const hm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+    return task.dueTime < hm;
+  }
+  return false;
 }
 
 /* =====================================================================
@@ -1576,7 +1599,12 @@ function renderCard(task) {
   const badge = node.querySelector(".due-badge");
   if (task.due) {
     badge.hidden = false;
-    badge.textContent = "📅 " + formatShort(task.due);
+    // A timed task due today reads as a same-day todo: just the time.
+    if (task.dueTime && task.due === todayKey()) {
+      badge.textContent = "🕒 " + formatTime(task.dueTime);
+    } else {
+      badge.textContent = "📅 " + formatShort(task.due) + (task.dueTime ? " · " + formatTime(task.dueTime) : "");
+    }
     if (isOverdue(task)) badge.classList.add("overdue");
   }
   const selectedTag = tagsOf(categoryOf(task)).find((t) => t.key === task.tag);
@@ -1615,7 +1643,20 @@ function renderCard(task) {
   renderAssigneeSelector(node, task);
   const dueInput = node.querySelector(".due-input");
   dueInput.value = task.due || "";
-  dueInput.addEventListener("change", () => updateAndRender(task.id, { due: dueInput.value || null }));
+  dueInput.addEventListener("change", () => {
+    // Clearing the date clears the time too — a time without a date is meaningless.
+    const patch = { due: dueInput.value || null };
+    if (!dueInput.value) patch.dueTime = null;
+    updateAndRender(task.id, patch);
+  });
+  const dueTimeInput = node.querySelector(".due-time-input");
+  dueTimeInput.value = task.dueTime || "";
+  dueTimeInput.addEventListener("change", () => {
+    // Setting a time with no date means "today" — make that concrete.
+    const patch = { dueTime: normTime(dueTimeInput.value) };
+    if (patch.dueTime && !task.due) patch.due = todayKey();
+    updateAndRender(task.id, patch);
+  });
   renderSwatches(node.querySelector(".label-swatches"), task);
 
   // "More" toggle: the priority/due/colour options start collapsed.
@@ -2714,6 +2755,7 @@ function rowFromTask(t) {
   if (assigneeSyncable) row.assignee = t.assignee || null;
   if (attachmentsSyncable) row.attachments = t.attachments || [];
   if (blocksSyncable) row.blocks = t.blocks || [];
+  if (dueTimeSyncable) row.due_time = t.dueTime || null;
   TASK_FIELDS.forEach((f) => (row[f] = t[f]));
   return row;
 }
@@ -2778,6 +2820,8 @@ async function setUser(nextUser) {
     attachmentsSyncable = !probeAttach.error; // false until supabase-attachments.sql is run
     const probeBlocks = await supa.from("tasks").select("blocks").limit(1);
     blocksSyncable = !probeBlocks.error; // false until supabase-blocks.sql is run
+    const probeDueTime = await supa.from("tasks").select("due_time").limit(1);
+    dueTimeSyncable = !probeDueTime.error; // false until supabase-due-time.sql is run
     const probeSnaps = await supa.from("board_snapshots").select("id").limit(1);
     boardSnapshotsSyncable = !probeSnaps.error; // false until supabase-board-snapshots.sql is run
     await cleanupDuplicatePersonalBoards(); // tidy any dupes from the old race
